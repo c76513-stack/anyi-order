@@ -342,7 +342,7 @@ function buildHolePanel(sid) {
   function hf(key, label, defVal, uOpts) {
     return '<div class="hole-field"><label>'+label+'</label>' +
       '<input type="number" id="s'+sid+'-hole'+key+'" value="'+(defVal||'')+'" placeholder="" oninput="holeSetManual(this);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
-      '<select id="s'+sid+'-hole'+key+'-u">'+(uOpts||uPlain)+'</select></div>';
+      '<select id="s'+sid+'-hole'+key+'-u" onchange="autoCalcHole('+sid+');updateHolePreview('+sid+')">'+(uOpts||uPlain)+'</select></div>';
   }
   return '<div class="hole-panel" id="s'+sid+'-hole-wrap" style="display:none">' +
     '<div class="hole-fields-wrap">' +
@@ -361,8 +361,8 @@ function buildHolePanel(sid) {
 // ══════════════════════════════════════════════
 function unitToMm(val, unit) {
   const v = parseFloat(val) || 0;
-  if (unit === '寸') return v * 30.3;
-  if (unit === '分') return v * 3.03;
+  if (unit === '寸') return v * 100/3.3;   // 1台寸 = 1/0.33公分
+  if (unit === '分') return v * 10/3.3;    // 1台分 = 1/3.3公分
   return v * 10;
 }
 function updateDimUnit(input, labelId, threshold) {
@@ -440,8 +440,9 @@ function setHoleAuto(sid, key, mm) {
   const uEl = document.getElementById('s'+sid+'-hole'+key+'-u');
   if (!el || el.dataset.manual) return;
   if (mm <= 0) { el.value = ''; el.classList.remove('hole-input-auto'); return; }
-  el.value = parseFloat((mm/10).toFixed(2));
-  if (uEl) uEl.value = '公分';
+  const unit = uEl ? uEl.value.replace('台','') : '公分';
+  const v = unit==='寸' ? mm/10*0.33 : unit==='分' ? mm/10*3.3 : mm/10;
+  el.value = parseFloat(v.toFixed(2));
   el.classList.add('hole-input-auto');
 }
 function holeSetManual(el) {
