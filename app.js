@@ -313,10 +313,8 @@ function addSizeRow(gid) {
     '</div>' +
     '<div class="size-field size-field-grow" style="margin-top:6px;max-width:100%"><label>備註</label>' +
       '<input type="text" id="s'+sid+'-remark" placeholder=""></div>' +
-    '<div class="a9-badge a9-badge-inline" id="s'+sid+'-a9badge"></div>' +
     buildHolePanel(sid);
   container.appendChild(row);
-  updateA9Badge(sid);
 }
 
 function removeSizeRow(sid) {
@@ -328,7 +326,6 @@ function toggleSizeSlant(sid) {
   const checked = document.getElementById('s'+sid+'-slant').checked;
   const wrap = document.getElementById('s'+sid+'-bottomW-wrap');
   if (wrap) wrap.style.display = checked ? 'flex' : 'none';
-  updateA9Badge(sid);
   updateHolePreview(sid);
 }
 
@@ -407,23 +404,6 @@ function computeA9(t, tUnit, b, bUnit) {
   return d < 0.3 ? i : d < 0.8 ? i + 0.5 : i + 1;
 }
 
-function updateA9Badge(sid) {
-  const topW = parseFloat(document.getElementById('s'+sid+'-topW').value) || 0;
-  const botEl = document.getElementById('s'+sid+'-bottomW');
-  const botW = botEl ? (parseFloat(botEl.value) || 0) : 0;
-  const badge = document.getElementById('s'+sid+'-a9badge');
-  if (!badge) return;
-  const tUnit = getFieldUnit(sid, 'topW');
-  const bUnit = getFieldUnit(sid, 'bottomW');
-  const a9 = computeA9(topW, tUnit, botW, bUnit);
-  if (a9 !== null) {
-    badge.style.display = 'flex';
-    badge.innerHTML = '角材寬度：<strong style="margin-left:4px">' + a9 + '</strong>';
-  } else {
-    badge.style.display = 'none';
-  }
-}
-
 // ── 挖洞 ──
 function holeVal(sid, key) {
   const el = document.getElementById('s'+sid+'-hole'+key);
@@ -494,7 +474,6 @@ function holeSpecText(sid) {
   return s;
 }
 function updateHolePreview(sid) {
-  updateA9Badge(sid);
   const box = document.getElementById('s'+sid+'-hole-preview');
   if (!box) return;
   const topWVal = parseFloat(document.getElementById('s'+sid+'-topW').value)||0;
