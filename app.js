@@ -332,19 +332,25 @@ function toggleHole(sid) {
   const checked = document.getElementById('s'+sid+'-hole').checked;
   const panel = document.getElementById('s'+sid+'-hole-wrap');
   if (panel) panel.style.display = checked ? 'flex' : 'none';
+  if (checked) { autoCalcHole(sid); updateHolePreview(sid); }
 }
 
 function buildHolePanel(sid) {
-  const uOpts = '<option value="公分">公分</option><option value="分">台分</option><option value="寸">台寸</option>';
-  function hf(key, label) {
+  const uCm = '<option value="公分" selected>公分</option><option value="分">台分</option><option value="寸">台寸</option>';
+  const uCun = '<option value="公分">公分</option><option value="分">台分</option><option value="寸" selected>台寸</option>';
+  const uPlain = '<option value="公分">公分</option><option value="分">台分</option><option value="寸">台寸</option>';
+  function hf(key, label, defVal, uOpts) {
     return '<div class="hole-field"><label>'+label+'</label>' +
-      '<input type="number" id="s'+sid+'-hole'+key+'" placeholder="" oninput="holeSetManual(this);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
-      '<select id="s'+sid+'-hole'+key+'-u">'+uOpts+'</select></div>';
+      '<input type="number" id="s'+sid+'-hole'+key+'" value="'+(defVal||'')+'" placeholder="" oninput="holeSetManual(this);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
+      '<select id="s'+sid+'-hole'+key+'-u">'+(uOpts||uPlain)+'</select></div>';
   }
   return '<div class="hole-panel" id="s'+sid+'-hole-wrap" style="display:none">' +
     '<div class="hole-fields-wrap">' +
-      '<div class="hole-dist-row">' + hf('B','距底') + hf('T','距高') + hf('L','距左') + hf('R','距右') + '</div>' +
-      '<div class="hole-size-row">' + hf('W','洞寬') + hf('H','洞高') + '</div>' +
+      '<div class="hole-dist-row">' +
+        hf('B','距底','100',uCm) + hf('T','距高','5',uCun) +
+        hf('L','距左','5',uCun) + hf('R','距右','5',uCun) +
+      '</div>' +
+      '<div class="hole-size-row">' + hf('W','洞寬','',uPlain) + hf('H','洞高','',uPlain) + '</div>' +
     '</div>' +
     '<div class="hole-preview" id="s'+sid+'-hole-preview"></div>' +
   '</div>';
