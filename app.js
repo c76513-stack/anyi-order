@@ -339,21 +339,40 @@ function buildHolePanel(sid) {
   const uCm = '<option value="公分" selected>公分</option><option value="分">台分</option><option value="寸">台寸</option>';
   const uCun = '<option value="公分">公分</option><option value="分">台分</option><option value="寸" selected>台寸</option>';
   const uPlain = '<option value="公分">公分</option><option value="分">台分</option><option value="寸">台寸</option>';
-  function hf(key, label, defVal, uOpts) {
+  // 距離欄：改動時清除配對欄的 manual，讓對側自動更新
+  function df(key, label, defVal, uOpts) {
     return '<div class="hole-field"><label>'+label+'</label>' +
-      '<input type="number" id="s'+sid+'-hole'+key+'" value="'+(defVal||'')+'" placeholder="" oninput="holeSetManual(this);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
+      '<input type="number" id="s'+sid+'-hole'+key+'" value="'+(defVal||'')+'" placeholder="" oninput="holeDistInput(this,\''+key+'\','+sid+');updateHolePreview('+sid+')">' +
+      '<select id="s'+sid+'-hole'+key+'-u" onchange="holeDistUnit('+sid+',\''+key+'\');updateHolePreview('+sid+')">'+(uOpts||uPlain)+'</select></div>';
+  }
+  // 洞寬/洞高：維持原本邏輯
+  function sf(key, label, uOpts) {
+    return '<div class="hole-field"><label>'+label+'</label>' +
+      '<input type="number" id="s'+sid+'-hole'+key+'" value="" placeholder="" oninput="holeSetManual(this);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
       '<select id="s'+sid+'-hole'+key+'-u" onchange="autoCalcHole('+sid+');updateHolePreview('+sid+')">'+(uOpts||uPlain)+'</select></div>';
   }
   return '<div class="hole-panel" id="s'+sid+'-hole-wrap" style="display:none">' +
     '<div class="hole-fields-wrap">' +
       '<div class="hole-dist-row">' +
-        hf('B','距底','100',uCm) + hf('T','距高','5',uCun) +
-        hf('L','距左','5',uCun) + hf('R','距右','5',uCun) +
+        df('B','距底','100',uCm) + df('T','距高','5',uCun) +
+        df('L','距左','5',uCun) + df('R','距右','5',uCun) +
       '</div>' +
-      '<div class="hole-size-row">' + hf('W','洞寬','',uPlain) + hf('H','洞高','',uPlain) + '</div>' +
+      '<div class="hole-size-row">' + sf('W','洞寬',uPlain) + sf('H','洞高',uPlain) + '</div>' +
     '</div>' +
     '<div class="hole-preview" id="s'+sid+'-hole-preview"></div>' +
   '</div>';
+}
+var holePair = {L:'R',R:'L',B:'T',T:'B'};
+function holeDistInput(el, key, sid) {
+  el.dataset.manual = '1';
+  const opp = document.getElementById('s'+sid+'-hole'+holePair[key]);
+  if (opp) delete opp.dataset.manual;
+  autoCalcHole(sid);
+}
+function holeDistUnit(sid, key) {
+  const opp = document.getElementById('s'+sid+'-hole'+holePair[key]);
+  if (opp) delete opp.dataset.manual;
+  autoCalcHole(sid);
 }
 
 // ══════════════════════════════════════════════
@@ -501,7 +520,7 @@ function updateHolePreview(sid) {
     const hl=Math.round(holeL*scale),hb=dh-Math.round(holeB*scale)-hh;
     inner=`<rect x="${hl}" y="${hb}" width="${hw}" height="${hh}" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>`;
   }
-  box.innerHTML=`<svg width="${dw}" height="${dh}" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff"><rect width="${dw}" height="${dh}" fill="#ebf8ff"/>${inner}</svg><div class="hole-note" style="margin-top:4px">${Math.round(doorW)}×${Math.round(doorH)}mm</div>`;
+  box.innerHTML=`<svg width="${dw}" height="${dh}" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff"><rect width="${dw}" height="${dh}" fill="#ebf8ff"/>${inner}</svg><div class="hole-note" style="margin-top:4px">${(doorW/10).toFixed(1)}×${(doorH/10).toFixed(1)}公分</div>`;
 }
 
 // ══════════════════════════════════════════════
@@ -767,15 +786,39 @@ function groupOrders(orders) {
   return groups;
 }
 
+function parseHoleMm(spec, key) {
+  const m = spec.match(new RegExp(key+'([\\d.]+)(公分|台分|台寸)'));
+  if (!m) return 0;
+  return unitToMm(parseFloat(m[1]), m[2].replace('台',''));
+}
+function holeRemarkSvg(remark) {
+  if (!remark || remark.indexOf('【挖洞】') === -1) return '';
+  const spec = remark.substring(remark.indexOf('【挖洞】'));
+  const W = parseHoleMm(spec,'洞寬'), H = parseHoleMm(spec,'洞高');
+  if (W<=0||H<=0) return '';
+  const B = parseHoleMm(spec,'距底')||0, T = parseHoleMm(spec,'距高')||0;
+  const L = parseHoleMm(spec,'距左')||0, R = parseHoleMm(spec,'距右')||0;
+  const doorW = (L+W+R)||W, doorH = (B+H+T)||H;
+  const MAX=70, scale=Math.min(MAX/doorW,MAX*1.5/doorH);
+  const dw=Math.round(doorW*scale), dh=Math.round(doorH*scale);
+  const hw=Math.max(1,Math.round(W*scale)), hh=Math.max(1,Math.round(H*scale));
+  const hl=Math.round(L*scale), hb=dh-Math.round(B*scale)-hh;
+  return '<svg width="'+dw+'" height="'+dh+'" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff;display:block;margin-top:6px">'+
+    '<rect width="'+dw+'" height="'+dh+'" fill="#ebf8ff"/>'+
+    '<rect x="'+hl+'" y="'+hb+'" width="'+hw+'" height="'+hh+'" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>'+
+    '</svg>';
+}
 function itemLine(it) {
   const wDisp = it.bottomW
     ? dimDisp(it.topW,150)+' / '+dimDisp(it.bottomW,150)+'（斜邊）'
     : dimDisp(it.topW,150);
+  const remarkText = it.remark ? it.remark.replace(/【挖洞】.*/,'').trim() : '';
+  const holeSvg = holeRemarkSvg(it.remark||'');
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(it.modelType)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,200)+'　× <strong>'+it.quantity+' 片</strong>'+
-      (it.remark ? '　<span class="order-remark">備註：'+escHtml(it.remark)+'</span>' : '')+
-    '</div></div>';
+      (remarkText ? '　<span class="order-remark">備註：'+escHtml(remarkText)+'</span>' : '')+
+    '</div>'+holeSvg+'</div>';
 }
 
 function escHtml(s) {
