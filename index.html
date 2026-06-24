@@ -15,22 +15,6 @@
 </head>
 <body>
 
-<!-- ══ 設定 GAS 網址 ══ -->
-<div id="setup-section">
-  <div class="card">
-    <div class="company-header">
-      <div class="company-name">安奕木業有限公司</div>
-    </div>
-    <div class="system-title">⚙️ 初次設定</div>
-    <p class="sub">請輸入後端 GAS 網址（只需設定一次）</p>
-    <div class="field">
-      <label>GAS 部署網址 <span class="req">*</span></label>
-      <input id="setup-url" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-    </div>
-    <button class="btn btn-blue" onclick="saveSetup()">確認儲存</button>
-    <p id="setup-err" class="err-msg">請輸入有效的網址</p>
-  </div>
-</div>
 
 <!-- ══ 登入頁 ══ -->
 <div id="login-section" style="display:none">
@@ -206,11 +190,6 @@
         <button class="btn btn-blue" onclick="doChangePassword()">確認修改</button>
         <p id="pw-err" class="err-msg"></p>
         <p id="pw-ok" style="color:#276749;font-size:.88rem;margin-top:10px;text-align:center;display:none">✅ 密碼已修改成功</p>
-      </div>
-      <div class="group-card" id="gas-settings-card" style="display:none">
-        <div class="group-header"><span class="group-num">系統設定</span></div>
-        <p style="font-size:.85rem;color:#718096;margin-bottom:10px">目前 GAS 網址：<br><span id="current-gas-url" style="color:#2b6cb0;font-size:.78rem;word-break:break-all"></span></p>
-        <button class="btn btn-outline" onclick="resetSetup()">重新設定 GAS 網址</button>
       </div>
     </div>
   </div>

@@ -1,13 +1,11 @@
 // ══════════════════════════════════════════════
 //  GAS API 通訊
 // ══════════════════════════════════════════════
-const GAS_KEY = 'anyi_gas_url';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxN_zAwK-GI9stX4bgPnx59WnsXAY--kgl3sXOrSeftSUFw3fefSA22VcCQ5SZpE4SQKg/exec';
 
 async function gasApi(action, data) {
-  const gasUrl = localStorage.getItem(GAS_KEY);
-  if (!gasUrl) { showSetupSection(); throw new Error('no gas url'); }
   const payload = encodeURIComponent(JSON.stringify(Object.assign({ action }, data || {})));
-  const resp = await fetch(gasUrl + '?payload=' + payload, { redirect: 'follow' });
+  const resp = await fetch(GAS_URL + '?payload=' + payload, { redirect: 'follow' });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   return resp.json();
 }
@@ -29,11 +27,6 @@ let modalResolve = null;
 //  初始化
 // ══════════════════════════════════════════════
 window.addEventListener('load', function () {
-  // 設定初次設定畫面
-  if (!localStorage.getItem(GAS_KEY)) {
-    showSetupSection();
-    return;
-  }
   // 記住帳密
   try {
     const saved = JSON.parse(localStorage.getItem('anyi_cred') || '{}');
@@ -42,7 +35,6 @@ window.addEventListener('load', function () {
   } catch (e) {}
   showLoginSection();
   initInstallUI();
-  document.getElementById('current-gas-url').textContent = localStorage.getItem(GAS_KEY) || '';
 });
 
 // Service Worker 註冊
@@ -88,14 +80,7 @@ function doInstall() {
 function showEl(id) { const el = document.getElementById(id); if (el) el.style.display = 'block'; }
 function hideEl(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
 
-function showSetupSection() {
-  ['setup-section','login-section','register-section','forgot-section','form-section'].forEach(function(id) {
-    const el = document.getElementById(id);
-    if (el) el.style.display = id === 'setup-section' ? 'flex' : 'none';
-  });
-}
 function showLoginSection() {
-  document.getElementById('setup-section').style.display = 'none';
   document.getElementById('login-section').style.display = 'flex';
   document.getElementById('register-section').style.display = 'none';
   document.getElementById('forgot-section').style.display = 'none';
@@ -129,22 +114,6 @@ function showTab(name) {
 // ══════════════════════════════════════════════
 //  設定
 // ══════════════════════════════════════════════
-function saveSetup() {
-  const url = document.getElementById('setup-url').value.trim();
-  if (!url.startsWith('https://script.google.com')) {
-    showEl('setup-err'); return;
-  }
-  localStorage.setItem(GAS_KEY, url);
-  document.getElementById('current-gas-url').textContent = url;
-  showLoginSection();
-  initInstallUI();
-}
-function resetSetup() {
-  if (confirm('確定要重新設定 GAS 網址嗎？')) {
-    localStorage.removeItem(GAS_KEY);
-    logout();
-  }
-}
 
 // ══════════════════════════════════════════════
 //  登入 / 登出
