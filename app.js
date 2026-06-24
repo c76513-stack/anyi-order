@@ -176,6 +176,7 @@ async function login() {
     if (currentRole === 'admin') {
       document.getElementById('tab-admin').style.display = 'flex';
       document.getElementById('tab-accounts').style.display = 'flex';
+      document.getElementById('gas-settings-card').style.display = 'block';
     }
     const today = new Date().toISOString().slice(0, 10);
     document.getElementById('query-date').value = today;
