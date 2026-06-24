@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#2b6cb0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="安奕訂單">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <title>安奕木業訂單系統</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<!-- ══ 設定 GAS 網址 ══ -->
+<div id="setup-section">
+  <div class="card">
+    <div class="company-header">
+      <div class="company-name">安奕木業有限公司</div>
+    </div>
+    <div class="system-title">⚙️ 初次設定</div>
+    <p class="sub">請輸入後端 GAS 網址（只需設定一次）</p>
+    <div class="field">
+      <label>GAS 部署網址 <span class="req">*</span></label>
+      <input id="setup-url" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <button class="btn btn-blue" onclick="saveSetup()">確認儲存</button>
+    <p id="setup-err" class="err-msg">請輸入有效的網址</p>
+  </div>
+</div>
+
+<!-- ══ 登入頁 ══ -->
+<div id="login-section" style="display:none">
+  <div class="card">
+    <div class="company-header">
+      <div class="company-name">安奕木業有限公司</div>
+      <div class="company-info">統一編號：82849101</div>
+      <div class="company-info">新北市林口區中湖里中湖路48-15號B棟</div>
+      <div class="company-info">TEL：02-8601-1898　FAX：02-8601-4024</div>
+    </div>
+    <div class="system-title">🚪 門扇訂單系統</div>
+    <p class="sub">請輸入您的帳號密碼</p>
+    <div class="field"><label>帳號</label><input id="username" type="text" placeholder="帳號" autocomplete="username"></div>
+    <div class="field"><label>密碼</label><input id="password" type="password" placeholder="密碼" autocomplete="current-password"></div>
+    <label class="remember-label"><input type="checkbox" id="remember-me"> 記住帳號密碼</label>
+    <button class="btn btn-blue" onclick="login()" style="margin-top:14px">登 入</button>
+    <p id="login-err" class="err-msg">帳號或密碼錯誤，請再試一次</p>
+    <p id="login-disabled" class="err-msg" style="color:#c05621">此帳號已被停用，請聯絡安奕木業</p>
+    <p class="register-link">還沒有帳號？<a href="#" onclick="showRegister()">點此申請</a>　｜　<a href="#" onclick="showForgot()">忘記密碼</a></p>
+  </div>
+</div>
+
+<!-- ══ 申請帳號頁 ══ -->
+<div id="register-section" style="display:none">
+  <div class="card">
+    <div class="company-header"><div class="company-name">安奕木業有限公司</div></div>
+    <div class="system-title">申請帳號</div>
+    <p class="sub">申請後即可立即登入使用</p>
+    <div class="field"><label>客戶名稱 <span class="req">*</span></label><input id="reg-name" type="text" placeholder="請輸入公司或個人名稱"></div>
+    <div class="field"><label>統一編號 <span class="req">*</span></label><input id="reg-taxid" type="text" placeholder="請輸入統一編號" maxlength="8" inputmode="numeric"></div>
+    <div class="field"><label>帳號 <span class="req">*</span></label><input id="reg-user" type="text" placeholder="自訂英文或數字帳號"></div>
+    <div class="field"><label>密碼 <span class="req">*</span></label><input id="reg-pass" type="password" placeholder="自訂密碼"></div>
+    <div class="field"><label>確認密碼 <span class="req">*</span></label><input id="reg-pass2" type="password" placeholder="再輸入一次密碼"></div>
+    <button class="btn btn-blue" onclick="register()">申 請</button>
+    <p id="reg-err" class="err-msg"></p>
+    <p class="register-link" style="margin-top:14px"><a href="#" onclick="showLogin()">← 返回登入</a></p>
+  </div>
+</div>
+
+<!-- ══ 忘記密碼頁 ══ -->
+<div id="forgot-section" style="display:none">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div class="card">
+      <div class="company-header"><div class="company-name">安奕木業有限公司</div></div>
+      <div class="system-title">重設密碼</div>
+      <p class="sub">輸入帳號與統一編號驗證身份</p>
+      <div class="field"><label>帳號 <span class="req">*</span></label><input id="fgt-user" type="text" placeholder="請輸入帳號"></div>
+      <div class="field"><label>統一編號 <span class="req">*</span></label><input id="fgt-taxid" type="text" placeholder="請輸入統一編號" maxlength="8" inputmode="numeric"></div>
+      <div class="field"><label>新密碼 <span class="req">*</span></label><input id="fgt-pass" type="password" placeholder="請輸入新密碼"></div>
+      <div class="field"><label>確認新密碼 <span class="req">*</span></label><input id="fgt-pass2" type="password" placeholder="再輸入一次新密碼"></div>
+      <button class="btn btn-blue" onclick="doForgotPassword()">確認重設</button>
+      <p id="fgt-err" class="err-msg"></p>
+      <p class="register-link" style="margin-top:14px"><a href="#" onclick="showLogin()">← 返回登入</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 主頁面 ══ -->
+<div id="form-section" style="display:none">
+  <div class="top-bar">
+    <span class="customer-name">安奕木業　👤 <span id="name-display"></span></span>
+    <button class="btn-logout" onclick="logout()">登出</button>
+  </div>
+  <div class="tabs">
+    <button class="tab tab-active" id="tab-order" onclick="showTab('order')">📝 新增訂單</button>
+    <button class="tab" id="tab-query" onclick="showTab('query')">🔍 查詢紀錄</button>
+    <button class="tab" id="tab-admin" onclick="showTab('admin')" style="display:none">📊 所有訂單</button>
+    <button class="tab" id="tab-accounts" onclick="showTab('accounts')" style="display:none">👥 帳號管理</button>
+    <button class="tab" id="tab-settings" onclick="showTab('settings')">⚙️ 設定</button>
+  </div>
+
+  <!-- 新增訂單 -->
+  <div id="order-section">
+    <div class="content">
+      <div id="groups-container"></div>
+      <button class="btn btn-outline" onclick="addGroup()" style="margin-bottom:10px">＋ 新增型式／顏色</button>
+      <button class="btn btn-green" onclick="submitAllOrders()">✅ 送出全部訂單</button>
+      <div class="success-card" id="success-card">
+        <span class="ok-icon">🎉</span>
+        <h3 id="success-title">訂單已送出！</h3>
+        <p>老闆已收到通知，謝謝您的訂單。</p>
+        <button class="btn btn-outline" onclick="nextOrder()">繼續輸入下一批</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 查詢紀錄 -->
+  <div id="query-section" style="display:none">
+    <div class="content">
+      <div class="date-picker-card">
+        <label class="date-label">選擇日期</label>
+        <input type="date" id="query-date" onchange="renderOrders()">
+        <button onclick="allOrders=null;loadOrders()" style="flex-shrink:0;padding:8px 14px;border:1.5px solid #3182ce;border-radius:8px;background:transparent;color:#3182ce;font-size:.88rem;font-weight:700;cursor:pointer">↻ 重新整理</button>
+      </div>
+      <div class="date-picker-card" style="margin-top:-4px">
+        <label class="date-label">訂單編號</label>
+        <input type="text" id="query-orderid" placeholder="輸入編號可跨日期搜尋" oninput="renderOrders()" style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.95rem;color:#2d3748;text-transform:uppercase">
+      </div>
+      <div class="summary-card" id="summary-card" style="display:none">
+        <div class="summary-date" id="summary-date"></div>
+        <div class="summary-total">共 <span id="summary-total">0</span> 片</div>
+      </div>
+      <div id="orders-list"></div>
+      <div id="no-orders" class="no-data" style="display:none">這天沒有訂單</div>
+    </div>
+  </div>
+
+  <!-- 老闆後台 -->
+  <div id="admin-section" style="display:none">
+    <div class="content">
+      <div class="date-picker-card">
+        <label class="date-label">選擇日期</label>
+        <input type="date" id="admin-date" onchange="renderAdminOrders()">
+        <button onclick="refreshAdminOrders()" style="flex-shrink:0;padding:8px 14px;border:1.5px solid #3182ce;border-radius:8px;background:transparent;color:#3182ce;font-size:.88rem;font-weight:700;cursor:pointer">↻ 重新整理</button>
+        <button onclick="exportDailyReport()" style="flex-shrink:0;padding:8px 14px;border:none;border-radius:8px;background:#38a169;color:#fff;font-size:.88rem;font-weight:700;cursor:pointer">📋 匯出日報</button>
+      </div>
+      <div class="date-picker-card" style="margin-top:-4px">
+        <label class="date-label">客戶名稱</label>
+        <select id="admin-search" onchange="renderAdminOrders()" style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.95rem;color:#2d3748;background:#fff">
+          <option value="">所有客戶</option>
+        </select>
+      </div>
+      <div class="date-picker-card" style="margin-top:-4px">
+        <label class="date-label">訂單編號</label>
+        <input type="text" id="admin-orderid" placeholder="輸入編號可跨日期搜尋（留空則看當日）" oninput="renderAdminOrders()" style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.95rem;color:#2d3748;text-transform:uppercase">
+      </div>
+      <div class="summary-card" id="admin-summary-card" style="display:none">
+        <div class="summary-date" id="admin-summary-date"></div>
+        <div class="summary-total">共 <span id="admin-summary-total">0</span> 片</div>
+      </div>
+      <div id="admin-orders-list"></div>
+      <div id="admin-no-orders" class="no-data" style="display:none">這天沒有訂單</div>
+    </div>
+  </div>
+
+  <!-- 帳號管理 -->
+  <div id="accounts-section" style="display:none">
+    <div class="content">
+      <div class="group-card">
+        <div class="group-header"><span class="group-num">客戶帳號列表</span>
+          <button class="btn-remove-row" onclick="loadAccounts()">↻ 重新整理</button>
+        </div>
+        <div id="accounts-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 設定 -->
+  <div id="settings-section" style="display:none">
+    <div class="content">
+      <div class="group-card" id="install-card">
+        <div class="group-header"><span class="group-num">📲 安裝為 APP</span></div>
+        <p style="font-size:.88rem;color:#718096;margin-bottom:14px">安裝後可從桌面直接開啟，全螢幕使用，不需要每次找網址。</p>
+        <button class="btn btn-blue" id="install-btn" onclick="doInstall()" style="display:none">⬇ 安裝到桌面</button>
+        <div id="install-ios" style="display:none;font-size:.88rem;color:#4a5568;line-height:1.9">
+          <div style="margin-bottom:6px;font-weight:700;color:#2b6cb0">iPhone / iPad 安裝步驟：</div>
+          <div>① 點下方工具列的 <strong>分享</strong> 按鈕（方框加箭頭）</div>
+          <div>② 往下滑找到 <strong>「加入主畫面」</strong></div>
+          <div>③ 點右上角 <strong>「新增」</strong> 即完成</div>
+        </div>
+        <div id="install-desktop" style="display:none;font-size:.88rem;color:#4a5568;line-height:1.8">
+          <div style="margin-bottom:8px;font-weight:700;color:#2b6cb0">電腦安裝步驟：</div>
+          <div>① 網址列最右邊會出現 <strong>安裝圖示（⊕）</strong>，點它</div>
+          <div>② 或點右上角選單 → <strong>將此網站安裝為應用程式</strong></div>
+        </div>
+        <div id="install-done" style="display:none;font-size:.88rem;color:#276749;font-weight:700">✅ 已以 APP 模式開啟</div>
+      </div>
+      <div class="group-card">
+        <div class="group-header"><span class="group-num">修改密碼</span></div>
+        <div class="field"><label>舊密碼</label><input type="password" id="pw-old" placeholder="請輸入目前密碼"></div>
+        <div class="field"><label>新密碼</label><input type="password" id="pw-new" placeholder="請輸入新密碼（至少 4 碼）"></div>
+        <div class="field"><label>確認新密碼</label><input type="password" id="pw-new2" placeholder="再輸入一次新密碼"></div>
+        <button class="btn btn-blue" onclick="doChangePassword()">確認修改</button>
+        <p id="pw-err" class="err-msg"></p>
+        <p id="pw-ok" style="color:#276749;font-size:.88rem;margin-top:10px;text-align:center;display:none">✅ 密碼已修改成功</p>
+      </div>
+      <div class="group-card">
+        <div class="group-header"><span class="group-num">系統設定</span></div>
+        <p style="font-size:.85rem;color:#718096;margin-bottom:10px">目前 GAS 網址：<br><span id="current-gas-url" style="color:#2b6cb0;font-size:.78rem;word-break:break-all"></span></p>
+        <button class="btn btn-outline" onclick="resetSetup()">重新設定 GAS 網址</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:999">
+  <div class="spinner"></div>
+</div>
+
+<!-- Alert / Confirm Modal -->
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:24px 22px;max-width:340px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+    <p id="modal-msg" style="font-size:.95rem;color:#2d3748;margin-bottom:18px;white-space:pre-wrap;line-height:1.6"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button id="modal-cancel" class="btn btn-outline" style="width:auto;padding:9px 18px;margin-top:0;display:none" onclick="modalResolve(false)">取消</button>
+      <button id="modal-ok" class="btn btn-blue" style="width:auto;padding:9px 22px" onclick="modalResolve(true)">確定</button>
+    </div>
+  </div>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>
