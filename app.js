@@ -2,6 +2,7 @@
 //  GAS API 通訊
 // ══════════════════════════════════════════════
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxN_zAwK-GI9stX4bgPnx59WnsXAY--kgl3sXOrSeftSUFw3fefSA22VcCQ5SZpE4SQKg/exec';
+window.modelMap = [];
 
 async function gasApi(action, data) {
   const payload = encodeURIComponent(JSON.stringify(Object.assign({ action }, data || {})));
@@ -101,7 +102,7 @@ function showForgot() {
 }
 
 function showTab(name) {
-  ['order','query','admin','accounts','settings'].forEach(function(t) {
+  ['order','query','admin','accounts','modelmap','settings'].forEach(function(t) {
     document.getElementById(t + '-section').style.display = t === name ? 'block' : 'none';
     const tab = document.getElementById('tab-' + t);
     if (tab) tab.classList.toggle('tab-active', t === name);
@@ -109,6 +110,7 @@ function showTab(name) {
   if (name === 'query' && !allOrders) loadOrders();
   if (name === 'admin' && !allAdminOrders) loadAllOrders();
   if (name === 'accounts') loadAccounts();
+  if (name === 'modelmap') renderModelMap();
 }
 
 // ══════════════════════════════════════════════
@@ -145,7 +147,9 @@ async function login() {
     if (currentRole === 'admin') {
       document.getElementById('tab-admin').style.display = 'flex';
       document.getElementById('tab-accounts').style.display = 'flex';
+      document.getElementById('tab-modelmap').style.display = 'flex';
     }
+    loadModelMap();
     const today = new Date().toISOString().slice(0, 10);
     document.getElementById('query-date').value = today;
     document.getElementById('admin-date').value = today;
@@ -163,6 +167,8 @@ function logout() {
   document.getElementById('form-section').style.display = 'none';
   document.getElementById('tab-admin').style.display = 'none';
   document.getElementById('tab-accounts').style.display = 'none';
+  document.getElementById('tab-modelmap').style.display = 'none';
+  window.modelMap = [];
   showLoginSection();
 }
 
@@ -272,7 +278,7 @@ function addGroup() {
       (gid > 1 ? '<button class="btn-remove-row" onclick="removeGroup('+gid+')">✕ 移除</button>' : '') +
     '</div>' +
     '<div class="row-2">' +
-      '<div class="field"><label>型式 <span class="req">*</span></label><input type="text" id="g'+gid+'-model" placeholder="如 101"></div>' +
+      '<div class="field"><label>型式 <span class="req">*</span></label><input type="text" id="g'+gid+'-model" placeholder="如 101" list="model-codes-list" oninput="applyModelCode('+gid+',this.value)"></div>' +
       '<div class="field"><label>顏色 <span class="req">*</span></label><input type="text" id="g'+gid+'-color" placeholder="如 P1"></div>' +
     '</div>' +
     '<div class="sizes-container" id="sizes-'+gid+'"></div>' +
@@ -532,7 +538,8 @@ async function submitAllOrders() {
   const orders = [];
   for (const g of groups) {
     const gid = g.id.replace('group-', '');
-    const model = document.getElementById('g'+gid+'-model').value.trim();
+    const modelEl = document.getElementById('g'+gid+'-model');
+    const model = (modelEl.dataset.systemCode || modelEl.value).trim();
     const color = document.getElementById('g'+gid+'-color').value.trim();
     if (!model || !color) { showAlert('請填寫型式與顏色'); return; }
     const rows = g.querySelectorAll('.size-row');
@@ -854,4 +861,118 @@ function showConfirm(msg) {
       resolve(val);
     };
   });
+}
+
+// ══════════════════════════════════════════════
+//  型式對照
+// ══════════════════════════════════════════════
+async function loadModelMap() {
+  try {
+    const res = await gasApi('getModelMap', authData());
+    window.modelMap = Array.isArray(res) ? res : [];
+    const dl = document.getElementById('model-codes-list');
+    if (dl) dl.innerHTML = window.modelMap.map(function(m){
+      return '<option value="'+escHtml(m.code)+'">'+escHtml(m.systemType)+'</option>';
+    }).join('');
+  } catch(e) {}
+}
+
+function applyModelCode(gid, val) {
+  const inp = document.getElementById('g'+gid+'-model');
+  const mapping = (window.modelMap||[]).find(function(m){ return m.code === val; });
+  if (!mapping) { if (inp) delete inp.dataset.systemCode; return; }
+  inp.dataset.systemCode = mapping.systemType;
+  const container = document.getElementById('sizes-'+gid);
+  if (!container) return;
+  container.querySelectorAll('.size-row').forEach(function(row) {
+    const sid = parseInt(row.id.replace('size-',''));
+    if (mapping.remark) {
+      const rEl = document.getElementById('s'+sid+'-remark');
+      if (rEl && !rEl.value) rEl.value = mapping.remark;
+    }
+    if (mapping.hole) {
+      const holeChk = document.getElementById('s'+sid+'-hole');
+      if (holeChk && !holeChk.checked) { holeChk.checked = true; toggleHole(sid); }
+      applyHolePreset(sid, mapping);
+    }
+  });
+}
+
+function applyHolePreset(sid, mapping) {
+  function setF(key, valWithUnit) {
+    if (!valWithUnit) return;
+    const m = valWithUnit.match(/^([\d.]+)(公分|台分|台寸)$/);
+    if (!m) return;
+    const el = document.getElementById('s'+sid+'-hole'+key);
+    const uEl = document.getElementById('s'+sid+'-hole'+key+'-u');
+    if (el) { el.value = m[1]; delete el.dataset.manual; el.classList.remove('hole-input-auto'); }
+    if (uEl) uEl.value = m[2].replace('台','');
+  }
+  setF('B', mapping.distB); setF('T', mapping.distT);
+  setF('L', mapping.distL); setF('R', mapping.distR);
+  setF('W', mapping.holeW); setF('H', mapping.holeH);
+  autoCalcHole(sid); updateHolePreview(sid);
+}
+
+// ── 型式對照 admin 管理 ──
+function renderModelMap() {
+  const list = document.getElementById('modelmap-list');
+  if (!list) return;
+  if (!window.modelMap.length) {
+    list.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:20px 0">尚無資料，點「＋ 新增」新增</p>';
+    return;
+  }
+  list.innerHTML = window.modelMap.map(function(m, i){ return mmCard(m, i); }).join('');
+}
+
+function mmCard(m, i) {
+  const hd = m.hole ? 'flex' : 'none';
+  return '<div style="border:1.5px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px;background:#f7fafc">' +
+    '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
+      '<input placeholder="客戶代碼（如378-2）" value="'+escHtml(m.code)+'" oninput="mmSet('+i+',\'code\',this.value)" style="flex:1;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.88rem">' +
+      '<span style="color:#a0aec0">→</span>' +
+      '<input placeholder="系統型式（如103）" value="'+escHtml(m.systemType)+'" oninput="mmSet('+i+',\'systemType\',this.value)" style="flex:1;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.88rem">' +
+      '<button class="btn-remove-row" onclick="mmDel('+i+')">✕</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">' +
+      '<input placeholder="自動帶入備註（選填）" value="'+escHtml(m.remark)+'" oninput="mmSet('+i+',\'remark\',this.value)" style="flex:1;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.88rem">' +
+      '<label style="display:flex;align-items:center;gap:5px;font-size:.85rem;white-space:nowrap;color:#4a5568;cursor:pointer"><input type="checkbox" '+(m.hole?'checked':'')+' onchange="mmHoleToggle('+i+',this.checked)"> 挖洞</label>' +
+    '</div>' +
+    '<div id="mm-hole-'+i+'" style="display:'+hd+';flex-wrap:wrap;gap:6px">' +
+      mmHF('距底',i,'distB',m.distB)+mmHF('距高',i,'distT',m.distT)+
+      mmHF('距左',i,'distL',m.distL)+mmHF('距右',i,'distR',m.distR)+
+      mmHF('洞寬',i,'holeW',m.holeW)+mmHF('洞高',i,'holeH',m.holeH)+
+    '</div>' +
+  '</div>';
+}
+function mmHF(label, i, key, val) {
+  return '<div style="display:flex;flex-direction:column;gap:2px;flex:0 0 calc(33% - 4px)">' +
+    '<label style="font-size:.72rem;color:#718096">'+label+'</label>' +
+    '<input placeholder="如 5台寸" value="'+escHtml(val||'')+'" oninput="mmSet('+i+',\''+key+'\',this.value)" style="padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.82rem">' +
+  '</div>';
+}
+function mmSet(i, key, val) { if (window.modelMap[i]) window.modelMap[i][key] = val; }
+function mmHoleToggle(i, checked) {
+  if (window.modelMap[i]) window.modelMap[i].hole = checked;
+  const d = document.getElementById('mm-hole-'+i);
+  if (d) d.style.display = checked ? 'flex' : 'none';
+}
+function mmDel(i) { window.modelMap.splice(i,1); renderModelMap(); }
+function addModelMapRow() {
+  window.modelMap.push({code:'',systemType:'',remark:'',hole:false,distB:'',distT:'',distL:'',distR:'',holeW:'',holeH:''});
+  renderModelMap();
+}
+async function doSaveModelMap() {
+  loading(true);
+  try {
+    const res = await gasApi('saveModelMap', Object.assign(authData(), { rows: window.modelMap }));
+    loading(false);
+    if (res.success) {
+      const dl = document.getElementById('model-codes-list');
+      if (dl) dl.innerHTML = window.modelMap.map(function(m){
+        return '<option value="'+escHtml(m.code)+'">'+escHtml(m.systemType)+'</option>';
+      }).join('');
+      showAlert('儲存成功！');
+    } else showAlert('儲存失敗：'+(res.error||''));
+  } catch(e) { loading(false); showAlert('連線失敗'); }
 }

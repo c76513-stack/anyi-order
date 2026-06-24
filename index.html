@@ -83,6 +83,7 @@
     <button class="tab" id="tab-query" onclick="showTab('query')">🔍 查詢紀錄</button>
     <button class="tab" id="tab-admin" onclick="showTab('admin')" style="display:none">📊 所有訂單</button>
     <button class="tab" id="tab-accounts" onclick="showTab('accounts')" style="display:none">👥 帳號管理</button>
+    <button class="tab" id="tab-modelmap" onclick="showTab('modelmap')" style="display:none">📋 型式對照</button>
     <button class="tab" id="tab-settings" onclick="showTab('settings')">⚙️ 設定</button>
   </div>
 
@@ -162,6 +163,23 @@
     </div>
   </div>
 
+  <!-- 型式對照 -->
+  <div id="modelmap-section" style="display:none">
+    <div class="content">
+      <div class="group-card">
+        <div class="group-header">
+          <span class="group-num">型式對照管理</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn-remove-row" style="color:#38a169;border-color:#38a169" onclick="addModelMapRow()">＋ 新增</button>
+            <button class="btn-action btn-confirm" style="padding:4px 12px;border-radius:6px" onclick="doSaveModelMap()">💾 儲存</button>
+          </div>
+        </div>
+        <p style="font-size:.82rem;color:#718096;margin-bottom:12px">設定好後按儲存。客戶輸入訂單時，型式欄會自動顯示這裡設定的代碼供選擇。</p>
+        <div id="modelmap-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- 設定 -->
   <div id="settings-section" style="display:none">
     <div class="content">
@@ -211,6 +229,7 @@
   </div>
 </div>
 
+<datalist id="model-codes-list"></datalist>
 <script src="./app.js"></script>
 </body>
 </html>
