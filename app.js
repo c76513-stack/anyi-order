@@ -68,7 +68,68 @@ window.addEventListener('appinstalled', function () {
   if (btn) btn.style.display = 'none';
   const done = document.getElementById('install-done');
   if (done) done.style.display = 'block';
+  hideInstallBanner();
 });
+
+// ── 自動安裝引導橫幅 ──
+function ibToday() { return new Date().toISOString().slice(0, 10); }
+function installBannerDismissedToday() {
+  try { return localStorage.getItem('anyi_install_hide') === ibToday(); } catch (e) { return false; }
+}
+function getInstallEnv() {
+  var ua = navigator.userAgent || '';
+  var standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  if (standalone) return 'installed';
+  if (/Line\/|FBAN|FBAV|FB_IAB|Instagram|Messenger|MicroMessenger/i.test(ua)) return 'inapp';
+  var isIos = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  if (isIos) return (/Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)) ? 'ios-safari' : 'ios-other';
+  return 'other';
+}
+function showInstallBanner() {
+  if (installBannerDismissedToday()) return;
+  var env = getInstallEnv();
+  if (env === 'installed') return;
+  var el = document.getElementById('install-banner');
+  var body = document.getElementById('install-banner-body');
+  if (!el || !body) return;
+  var html = '';
+  if (env === 'inapp') {
+    html = '<div class="ib-title">📲 把訂單系統裝到手機桌面</div>' +
+      '<div class="ib-text">目前是用 App 內建瀏覽器（如 LINE）開啟，沒辦法安裝。請點右上角「⋯」→「<b>用預設瀏覽器開啟</b>」，再回來安裝。</div>';
+  } else if (env === 'ios-safari') {
+    html = '<div class="ib-title">📲 把訂單系統裝到桌面</div>' +
+      '<div class="ib-text">點畫面下方的「<b>分享</b>」按鈕（方框加箭頭 ⬆️）→ 往下滑找到「<b>加入主畫面</b>」→ 新增。</div>';
+  } else if (env === 'ios-other') {
+    html = '<div class="ib-title">📲 想裝到桌面嗎？</div>' +
+      '<div class="ib-text">iPhone 請改用 <b>Safari</b> 開啟這個網址，才能「加入主畫面」變成 App。</div>';
+  } else {
+    html = '<div class="ib-title">📲 把訂單系統裝成 App</div>' +
+      '<div class="ib-text">裝到桌面後，下次點圖示直接開、全螢幕使用，不用每次找網址。</div>' +
+      '<button class="ib-install-btn" onclick="doInstallFromBanner()">📲 安裝到手機</button>' +
+      '<div class="ib-hint">若按了沒反應，請點瀏覽器選單 →「安裝應用程式 / 加到主畫面」</div>';
+  }
+  html += '<div class="ib-actions"><a href="#" onclick="dismissInstallBannerToday();return false;">今天不再提醒</a></div>';
+  body.innerHTML = html;
+  el.style.display = 'block';
+}
+function hideInstallBanner() {
+  var el = document.getElementById('install-banner');
+  if (el) el.style.display = 'none';
+}
+function dismissInstallBannerToday() {
+  try { localStorage.setItem('anyi_install_hide', ibToday()); } catch (e) {}
+  hideInstallBanner();
+}
+function doInstallFromBanner() {
+  if (_installPrompt) {
+    _installPrompt.prompt();
+    _installPrompt.userChoice.then(function (r) { if (r.outcome === 'accepted') { _installPrompt = null; hideInstallBanner(); } });
+  } else {
+    showAlert('請點瀏覽器右上角的選單（⋮ 或 ⋯）→「安裝應用程式 / 加到主畫面」');
+  }
+}
+// 延遲一點再顯示，讓 beforeinstallprompt 先觸發（Android 一鍵鈕才會生效）
+window.addEventListener('load', function () { setTimeout(function () { try { showInstallBanner(); } catch (e) {} }, 800); });
 
 function initInstallUI() {
   const ua = navigator.userAgent;

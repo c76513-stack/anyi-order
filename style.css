@@ -183,3 +183,30 @@ body {
   /* 訂單操作鈕：塞不下自動換行 */
   .order-actions { flex-wrap: wrap; }
 }
+
+/* ── 安裝引導橫幅 ── */
+#install-banner {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100;
+  max-width: 760px; margin: 0 auto;
+  background: #fff; border-top: 3px solid #2b6cb0;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -4px 22px rgba(0,0,0,.18);
+  padding: 14px 16px 16px;
+}
+#install-banner-close {
+  position: absolute; top: 8px; right: 10px;
+  background: transparent; border: none;
+  font-size: 1.1rem; color: #a0aec0; cursor: pointer; line-height: 1;
+}
+.ib-title { font-weight: 800; color: #1a365d; font-size: .98rem; margin-bottom: 4px; padding-right: 24px; }
+.ib-text { font-size: .86rem; color: #4a5568; line-height: 1.65; }
+.ib-text b { color: #2b6cb0; }
+.ib-install-btn {
+  margin-top: 10px; width: 100%; padding: 12px;
+  background: #38a169; color: #fff; border: none; border-radius: 9px;
+  font-size: .98rem; font-weight: 800; cursor: pointer;
+}
+.ib-install-btn:hover { background: #2f855a; }
+.ib-hint { font-size: .74rem; color: #a0aec0; margin-top: 6px; text-align: center; }
+.ib-actions { margin-top: 10px; text-align: right; }
+.ib-actions a { font-size: .82rem; color: #718096; text-decoration: underline; }

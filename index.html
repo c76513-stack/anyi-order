@@ -227,6 +227,12 @@
   <button onclick="window.location.href=window.location.href.split('?')[0]+'?_='+Date.now()" style="background:#fff;color:#2b6cb0;border:none;border-radius:6px;padding:5px 14px;font-weight:700;cursor:pointer;margin-left:10px;font-size:.88rem">立即更新</button>
 </div>
 
+<!-- 安裝引導橫幅 -->
+<div id="install-banner" style="display:none">
+  <button id="install-banner-close" onclick="hideInstallBanner()" aria-label="關閉">✕</button>
+  <div id="install-banner-body"></div>
+</div>
+
 <!-- Loading -->
 <div id="loading" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:999">
   <div class="spinner"></div>
