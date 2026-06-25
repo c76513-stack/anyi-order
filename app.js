@@ -457,9 +457,9 @@ function buildHolePanel(sid) {
         '<div id="s'+sid+'-hole-locked-spec" style="font-size:.78rem;color:#4a5568;line-height:1.9"></div>' +
       '</div>' +
       '<div class="hole-fields-wrap" id="s'+sid+'-hole-fields-wrap">' +
-        '<div style="display:flex;gap:16px;margin-bottom:8px">' +
-          '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="s'+sid+'-holeCH" onchange="toggleHoleCenter('+sid+')"> 左右置中</label>' +
-          '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="s'+sid+'-holeCV" onchange="toggleHoleCenter('+sid+')"> 上下置中</label>' +
+        '<div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer;white-space:nowrap"><input type="checkbox" id="s'+sid+'-holeCH" onchange="toggleHoleCenter('+sid+')"> 左右置中</label>' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer;white-space:nowrap"><input type="checkbox" id="s'+sid+'-holeCV" onchange="toggleHoleCenter('+sid+')"> 上下置中</label>' +
         '</div>' +
         '<div class="hole-dist-row">' +
           df('T','距高','5',uCun) + df('B','距底','100',uCm) +
