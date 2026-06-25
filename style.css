@@ -172,9 +172,10 @@ body {
   .row-2 { grid-template-columns: 1fr; }
   .size-row { position: relative; padding-right: 44px; }
   .btn-remove-size { position: absolute; top: 8px; right: 8px; margin-bottom: 0; }
+  .hole-panel { flex-direction: column; }
   .hole-fields-wrap { min-width: 0; width: 100%; }
   .hole-dist-row { grid-template-columns: repeat(2, 1fr); }
-  .hole-preview { margin-left: 0; }
+  .hole-preview { margin-left: 0; width: 100%; }
   /* 分頁：6 個也排得下 */
   .tabs { padding: 0 4px; }
   .tab { font-size: .72rem; padding: 10px 2px; }
