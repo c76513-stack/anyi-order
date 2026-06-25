@@ -3,6 +3,10 @@
 // ══════════════════════════════════════════════
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxN_zAwK-GI9stX4bgPnx59WnsXAY--kgl3sXOrSeftSUFw3fefSA22VcCQ5SZpE4SQKg/exec';
 window.modelMap = [];
+window.mmFormHoles = [];
+window.lockedHoles = {};
+window.mmEditIndex = -1;
+window.mmAccounts = [];
 
 async function gasApi(action, data) {
   const payload = encodeURIComponent(JSON.stringify(Object.assign({ action }, data || {})));
@@ -23,16 +27,22 @@ let allOrders = null, allAdminOrders = null;
 let _installPrompt = null;
 let groupCounter = 0, sizeCounter = 0;
 let modalResolve = null;
+let _appVersion = null, _versionTimer = null;
 
 // ══════════════════════════════════════════════
 //  初始化
 // ══════════════════════════════════════════════
 window.addEventListener('load', function () {
-  // 記住帳密
   try {
     const saved = JSON.parse(localStorage.getItem('anyi_cred') || '{}');
-    if (saved.u) { document.getElementById('username').value = saved.u; document.getElementById('remember-me').checked = true; }
-    if (saved.p) document.getElementById('password').value = saved.p;
+    if (saved.u && saved.p) {
+      document.getElementById('username').value = saved.u;
+      document.getElementById('password').value = saved.p;
+      document.getElementById('remember-me').checked = true;
+      login();
+      initInstallUI();
+      return;
+    }
   } catch (e) {}
   showLoginSection();
   initInstallUI();
@@ -150,10 +160,12 @@ async function login() {
       document.getElementById('tab-modelmap').style.display = 'flex';
     }
     loadModelMap();
+    loadColorList();
     const today = new Date().toISOString().slice(0, 10);
     document.getElementById('query-date').value = today;
     document.getElementById('admin-date').value = today;
     allOrders = null; allAdminOrders = null;
+    startVersionPolling();
     initGroups();
   } catch (e) {
     loading(false);
@@ -161,14 +173,31 @@ async function login() {
   }
 }
 
+function startVersionPolling() {
+  if (_versionTimer) clearInterval(_versionTimer);
+  gasApi('getVersion', {}).then(function(r) { if (r && r.version) _appVersion = r.version; });
+  _versionTimer = setInterval(function() {
+    gasApi('getVersion', {}).then(function(r) {
+      if (!r || !r.version) return;
+      if (_appVersion && r.version !== _appVersion) {
+        document.getElementById('update-banner').style.display = 'block';
+        clearInterval(_versionTimer);
+      }
+    }).catch(function(){});
+  }, 2 * 60 * 1000);
+}
+
 function logout() {
   currentUser = ''; currentPass = ''; currentCustomer = ''; currentRole = '';
   allOrders = null; allAdminOrders = null;
+  if (_versionTimer) { clearInterval(_versionTimer); _versionTimer = null; }
+  _appVersion = null;
+  document.getElementById('update-banner').style.display = 'none';
   document.getElementById('form-section').style.display = 'none';
   document.getElementById('tab-admin').style.display = 'none';
   document.getElementById('tab-accounts').style.display = 'none';
   document.getElementById('tab-modelmap').style.display = 'none';
-  window.modelMap = [];
+  window.modelMap = []; window.colorList = []; window.lockedHoles = {}; window.mmFormHoles = []; window.mmEditIndex = -1; window.mmAccounts = [];
   showLoginSection();
 }
 
@@ -248,6 +277,7 @@ function initGroups() {
   groupCounter = 0; sizeCounter = 0;
   document.getElementById('groups-container').innerHTML = '';
   document.getElementById('success-card').style.display = 'none';
+  updateCutoffNotice();
   addGroup();
   // 預填上次型式
   gasApi('getLastOrder', authData()).then(function(last) {
@@ -278,8 +308,8 @@ function addGroup() {
       (gid > 1 ? '<button class="btn-remove-row" onclick="removeGroup('+gid+')">✕ 移除</button>' : '') +
     '</div>' +
     '<div class="row-2">' +
-      '<div class="field"><label>型式 <span class="req">*</span></label><input type="text" id="g'+gid+'-model" placeholder="如 101" list="model-codes-list" oninput="applyModelCode('+gid+',this.value)"></div>' +
-      '<div class="field"><label>顏色 <span class="req">*</span></label><input type="text" id="g'+gid+'-color" placeholder="如 P1"></div>' +
+      '<div class="field"><label>型式 <span class="req">*</span></label><input type="text" id="g'+gid+'-model" placeholder="如 101" list="model-codes-list" oninput="applyModelCode('+gid+',this.value)" onchange="applyModelCode('+gid+',this.value)"></div>' +
+      '<div class="field"><label>顏色 <span class="req">*</span></label><input type="text" id="g'+gid+'-color" placeholder="如 P1" list="color-list"></div>' +
     '</div>' +
     '<div class="sizes-container" id="sizes-'+gid+'"></div>' +
     '<button class="btn btn-outline add-size-btn" onclick="addSizeRow('+gid+')">＋ 新增尺寸</button>';
@@ -303,13 +333,13 @@ function addSizeRow(gid) {
     '<div class="size-main">' +
       '<span class="size-seq">' + num + '</span>' +
       '<div class="size-field dim-field"><label>上寬</label>' +
-        '<div class="dim-wrap"><input type="number" id="s'+sid+'-topW" placeholder="數值" oninput="updateDimUnit(this,\'s'+sid+'-topW-u\',150);updateHolePreview('+sid+')">' +
+        '<div class="dim-wrap"><input type="number" id="s'+sid+'-topW" placeholder="數值" oninput="updateDimUnit(this,\'s'+sid+'-topW-u\',150);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
         '<span id="s'+sid+'-topW-u" class="dim-u-btn" data-unit="" data-sid="'+sid+'" onclick="toggleDimUnit(this)">—</span></div></div>' +
       '<div class="size-field dim-field" id="s'+sid+'-bottomW-wrap" style="display:none"><label>下寬</label>' +
-        '<div class="dim-wrap"><input type="number" id="s'+sid+'-bottomW" placeholder="數值" oninput="updateDimUnit(this,\'s'+sid+'-bottomW-u\',150);updateHolePreview('+sid+')">' +
+        '<div class="dim-wrap"><input type="number" id="s'+sid+'-bottomW" placeholder="數值" oninput="updateDimUnit(this,\'s'+sid+'-bottomW-u\',150);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
         '<span id="s'+sid+'-bottomW-u" class="dim-u-btn" data-unit="" data-sid="'+sid+'" onclick="toggleDimUnit(this)">—</span></div></div>' +
       '<div class="size-field dim-field"><label>高度</label>' +
-        '<div class="dim-wrap"><input type="number" id="s'+sid+'-height" placeholder="數值" oninput="updateDimUnit(this,\'s'+sid+'-height-u\',300);updateHolePreview('+sid+')">' +
+        '<div class="dim-wrap"><input type="number" id="s'+sid+'-height" placeholder="數值" oninput="updateDimUnit(this,\'s'+sid+'-height-u\',300);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
         '<span id="s'+sid+'-height-u" class="dim-u-btn" data-unit="" data-sid="'+sid+'" onclick="toggleDimUnit(this)">—</span></div></div>' +
       '<div class="size-field size-field-sm"><label>數量</label><input type="number" id="s'+sid+'-qty" value="1" min="1"></div>' +
       '<label class="size-slant"><input type="checkbox" id="s'+sid+'-slant" onchange="toggleSizeSlant('+sid+')"> 斜邊</label>' +
@@ -335,7 +365,9 @@ function toggleSizeSlant(sid) {
 }
 
 function toggleHole(sid) {
-  const checked = document.getElementById('s'+sid+'-hole').checked;
+  const chk = document.getElementById('s'+sid+'-hole');
+  if (chk && chk.dataset.locked) { chk.checked = true; return; }
+  const checked = chk ? chk.checked : false;
   const panel = document.getElementById('s'+sid+'-hole-wrap');
   if (panel) panel.style.display = checked ? 'flex' : 'none';
   if (checked) { autoCalcHole(sid); updateHolePreview(sid); }
@@ -358,12 +390,22 @@ function buildHolePanel(sid) {
       '<select id="s'+sid+'-hole'+key+'-u" onchange="autoCalcHole('+sid+');updateHolePreview('+sid+')">'+(uOpts||uPlain)+'</select></div>';
   }
   return '<div class="hole-panel" id="s'+sid+'-hole-wrap" style="display:none">' +
-    '<div class="hole-fields-wrap">' +
-      '<div class="hole-dist-row">' +
-        df('B','距底','100',uCm) + df('T','距高','5',uCun) +
-        df('L','距左','5',uCun) + df('R','距右','5',uCun) +
+    '<div style="flex:1;min-width:0">' +
+      '<div id="s'+sid+'-hole-locked-display" style="display:none;margin-bottom:8px">' +
+        '<div style="font-size:.78rem;color:#2b6cb0;font-weight:700;margin-bottom:4px">由型式對照設定（唯讀）</div>' +
+        '<div id="s'+sid+'-hole-locked-spec" style="font-size:.78rem;color:#4a5568;line-height:1.9"></div>' +
       '</div>' +
-      '<div class="hole-size-row">' + sf('W','洞寬',uPlain) + sf('H','洞高',uPlain) + '</div>' +
+      '<div class="hole-fields-wrap" id="s'+sid+'-hole-fields-wrap">' +
+        '<div style="display:flex;gap:16px;margin-bottom:8px">' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="s'+sid+'-holeCH" onchange="toggleHoleCenter('+sid+')"> 左右置中</label>' +
+          '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="s'+sid+'-holeCV" onchange="toggleHoleCenter('+sid+')"> 上下置中</label>' +
+        '</div>' +
+        '<div class="hole-dist-row">' +
+          df('T','距高','5',uCun) + df('B','距底','100',uCm) +
+          df('L','距左','5',uCun) + df('R','距右','5',uCun) +
+        '</div>' +
+        '<div class="hole-size-row">' + sf('W','洞寬',uPlain) + sf('H','洞高',uPlain) + '</div>' +
+      '</div>' +
     '</div>' +
     '<div class="hole-preview" id="s'+sid+'-hole-preview"></div>' +
   '</div>';
@@ -475,8 +517,13 @@ function holeSetManual(el) {
   else { el.dataset.manual = '1'; el.classList.remove('hole-input-auto'); }
 }
 function autoCalcHole(sid) {
+  if (window.lockedHoles[sid]) { updateHolePreview(sid); return; }
   const dW = getDoorMm(sid,'W'), dH = getDoorMm(sid,'H');
-  if (dW > 0) {
+  const chEl=document.getElementById('s'+sid+'-holeCH'), cvEl=document.getElementById('s'+sid+'-holeCV');
+  const centerH = chEl && chEl.checked, centerV = cvEl && cvEl.checked;
+  if (centerH) {
+    if (dW > 0) { const W=holeValMm(sid,'W'); if (W>0) { const d=(dW-W)/2; forceHole(sid,'L',d); forceHole(sid,'R',d); } }
+  } else if (dW > 0) {
     const L=holeValMm(sid,'L'),R=holeValMm(sid,'R'),W=holeValMm(sid,'W');
     const lEl=document.getElementById('s'+sid+'-holeL'),rEl=document.getElementById('s'+sid+'-holeR'),wEl=document.getElementById('s'+sid+'-holeW');
     const hasL=lEl&&lEl.value!=='',hasR=rEl&&rEl.value!=='',hasW=wEl&&wEl.value!=='';
@@ -484,7 +531,9 @@ function autoCalcHole(sid) {
     else if(hasL&&hasW&&rEl&&!rEl.dataset.manual) setHoleAuto(sid,'R',dW-L-W);
     else if(hasR&&hasW&&lEl&&!lEl.dataset.manual) setHoleAuto(sid,'L',dW-R-W);
   }
-  if (dH > 0) {
+  if (centerV) {
+    if (dH > 0) { const H=holeValMm(sid,'H'); if (H>0) { const d=(dH-H)/2; forceHole(sid,'T',d); forceHole(sid,'B',d); } }
+  } else if (dH > 0) {
     const B=holeValMm(sid,'B'),T=holeValMm(sid,'T'),H=holeValMm(sid,'H');
     const bEl=document.getElementById('s'+sid+'-holeB'),tEl=document.getElementById('s'+sid+'-holeT'),hEl=document.getElementById('s'+sid+'-holeH');
     const hasB=bEl&&bEl.value!=='',hasT=tEl&&tEl.value!=='',hasH=hEl&&hEl.value!=='';
@@ -493,7 +542,28 @@ function autoCalcHole(sid) {
     else if(hasT&&hasH&&bEl&&!bEl.dataset.manual) setHoleAuto(sid,'B',dH-T-H);
   }
 }
+function forceHole(sid, key, mm) {
+  const el = document.getElementById('s'+sid+'-hole'+key);
+  const uEl = document.getElementById('s'+sid+'-hole'+key+'-u');
+  if (!el) return;
+  if (mm <= 0) { el.value=''; el.classList.remove('hole-input-auto'); return; }
+  const unit = uEl ? uEl.value.replace('台','') : '公分';
+  const v = unit==='寸' ? mm/10*0.33 : unit==='分' ? mm/10*3.3 : mm/10;
+  el.value = parseFloat(v.toFixed(2));
+  el.classList.add('hole-input-auto');
+}
+function toggleHoleCenter(sid) {
+  const cH = document.getElementById('s'+sid+'-holeCH');
+  const cV = document.getElementById('s'+sid+'-holeCV');
+  ['L','R'].forEach(function(k){ const el=document.getElementById('s'+sid+'-hole'+k); if(el) el.disabled = !!(cH&&cH.checked); });
+  ['T','B'].forEach(function(k){ const el=document.getElementById('s'+sid+'-hole'+k); if(el) el.disabled = !!(cV&&cV.checked); });
+  autoCalcHole(sid); updateHolePreview(sid);
+}
 function holeSpecText(sid) {
+  if (window.lockedHoles[sid]) {
+    const dW = getDoorMm(sid,'W'), dH = getDoorMm(sid,'H');
+    return holesSpecText(window.lockedHoles[sid], dW, dH);
+  }
   const w=holeVal(sid,'W'),h=holeVal(sid,'H');
   const b=holeVal(sid,'B'),t=holeVal(sid,'T');
   const l=holeVal(sid,'L'),r=holeVal(sid,'R');
@@ -504,6 +574,83 @@ function holeSpecText(sid) {
   if(r) s+=' 距右'+r+holeUnit(sid,'R');
   return s;
 }
+function valToMm(valWithUnit) {
+  if (!valWithUnit) return 0;
+  var m = String(valWithUnit).match(/^([\d.]+)(公分|台分|台寸)$/);
+  if (!m) return 0;
+  return unitToMm(parseFloat(m[1]), m[2].replace('台',''));
+}
+function calcHolesLayout(holes, doorWmm, doorHmm) {
+  if (!holes || !holes.length) return [];
+  var centerH = !!holes[0].centerH, centerV = !!holes[0].centerV;
+  var distL_mm = valToMm(holes[0].distL);
+  var hW = holes.map(function(h){ return valToMm(h.holeW); });
+  var hH = holes.map(function(h){ return valToMm(h.holeH); });
+  var gap = holes.map(function(h,i){ return i===0 ? 0 : valToMm(h.gap); });
+  var startTop;
+  if (centerV && doorHmm > 0) {
+    var stackH = 0;
+    for (var k=0;k<holes.length;k++) stackH += hH[k] + gap[k];
+    startTop = (doorHmm - stackH) / 2;
+  } else {
+    startTop = valToMm(holes[0].distT);
+  }
+  var result = [], curTop = startTop;
+  for (var i = 0; i < holes.length; i++) {
+    if (i > 0) curTop = result[i-1].distT_mm + result[i-1].holeH_mm + gap[i];
+    var dL = (centerH && doorWmm > 0) ? (doorWmm - hW[i]) / 2 : distL_mm;
+    result.push({
+      distT_mm: curTop, distL_mm: dL, holeW_mm: hW[i], holeH_mm: hH[i],
+      distB_mm: doorHmm > 0 ? doorHmm - curTop - hH[i] : 0,
+      distR_mm: doorWmm > 0 ? doorWmm - dL - hW[i] : 0
+    });
+  }
+  return result;
+}
+function drawHolesSVG(doorWmm, doorHmm, computed, maxW, maxH) {
+  maxW = maxW||120; maxH = maxH||200;
+  if (!doorWmm||!doorHmm||!computed.length) return '';
+  var scale = Math.min(maxW/doorWmm, maxH/doorHmm);
+  var dw = Math.round(doorWmm*scale), dh = Math.round(doorHmm*scale);
+  var rects = '';
+  for (var i = 0; i < computed.length; i++) {
+    var c = computed[i];
+    if (c.holeW_mm>0&&c.holeH_mm>0) {
+      rects += '<rect x="'+Math.round(c.distL_mm*scale)+'" y="'+Math.round(c.distT_mm*scale)+
+        '" width="'+Math.max(1,Math.round(c.holeW_mm*scale))+'" height="'+Math.max(1,Math.round(c.holeH_mm*scale))+
+        '" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>';
+    }
+  }
+  return '<svg width="'+dw+'" height="'+dh+'" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff">'+
+    '<rect width="'+dw+'" height="'+dh+'" fill="#ebf8ff"/>'+rects+'</svg>'+
+    '<div class="hole-note" style="margin-top:4px">'+(doorWmm/10).toFixed(1)+'×'+(doorHmm/10).toFixed(1)+'公分</div>';
+}
+function mmDispUnit(valWithUnit) {
+  if (!valWithUnit) return '';
+  var m = String(valWithUnit).match(/^([\d.]+)(公分|台分|台寸)$/);
+  return m ? m[1]+m[2] : valWithUnit;
+}
+function holesSpecText(holes, doorWmm, doorHmm) {
+  var computed = calcHolesLayout(holes, doorWmm, doorHmm);
+  function cm(mm) { return mm > 0 ? (mm/10).toFixed(1)+'公分' : '?'; }
+  // 設定者有手動填的欄位 → 顯示原本單位；系統自動算的 → 公分
+  function disp(orig, mm) {
+    var mt = orig ? String(orig).match(/^([\d.]+)(公分|台分|台寸)$/) : null;
+    return mt ? (parseFloat(mt[1])+mt[2]) : cm(mm);
+  }
+  var parts = computed.map(function(c, i) {
+    var h = holes[i];
+    var s = '洞'+(i+1);
+    if (i>0) s += ' 洞距'+disp(h.gap, valToMm(h.gap));
+    s += ' 洞寬'+disp(h.holeW, c.holeW_mm)+' 洞高'+disp(h.holeH, c.holeH_mm);
+    s += ' 距高'+(i===0 ? disp(h.distT, c.distT_mm) : cm(c.distT_mm));
+    s += ' 距底'+cm(c.distB_mm);
+    s += ' 距左'+disp(holes[0].distL, c.distL_mm);
+    s += ' 距右'+cm(c.distR_mm);
+    return s;
+  });
+  return '【挖洞】'+parts.join('　');
+}
 function updateHolePreview(sid) {
   const box = document.getElementById('s'+sid+'-hole-preview');
   if (!box) return;
@@ -513,6 +660,18 @@ function updateHolePreview(sid) {
   const doorW = Math.max(unitToMm(topWVal,getFieldUnit(sid,'topW')), unitToMm(botWVal,getFieldUnit(sid,'bottomW')));
   const hRaw = parseFloat(document.getElementById('s'+sid+'-height').value)||0;
   const doorH = unitToMm(hRaw, getFieldUnit(sid,'height'));
+  if (window.lockedHoles[sid]) {
+    const computed = calcHolesLayout(window.lockedHoles[sid], doorW, doorH);
+    if (doorW<=0||doorH<=0) { box.innerHTML='<div class="hole-note">請先填門板上寬與高度</div>'; }
+    else { box.innerHTML = drawHolesSVG(doorW, doorH, computed); }
+    const specEl = document.getElementById('s'+sid+'-hole-locked-spec');
+    if (specEl) {
+      const lines = holesSpecText(window.lockedHoles[sid], doorW, doorH)
+        .replace('【挖洞】','').split('　');
+      specEl.innerHTML = lines.map(function(l){ return '<div>'+escHtml(l)+'</div>'; }).join('');
+    }
+    return;
+  }
   if (doorW<=0||doorH<=0) { box.innerHTML='<div class="hole-note">請先填門板上寬與高度，才能畫示意圖</div>'; return; }
   const holeW=unitToMm(holeVal(sid,'W'),holeUnit(sid,'W').replace('台',''));
   const holeH=unitToMm(holeVal(sid,'H'),holeUnit(sid,'H').replace('台',''));
@@ -527,6 +686,20 @@ function updateHolePreview(sid) {
     inner=`<rect x="${hl}" y="${hb}" width="${hw}" height="${hh}" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>`;
   }
   box.innerHTML=`<svg width="${dw}" height="${dh}" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff"><rect width="${dw}" height="${dh}" fill="#ebf8ff"/>${inner}</svg><div class="hole-note" style="margin-top:4px">${(doorW/10).toFixed(1)}×${(doorH/10).toFixed(1)}公分</div>`;
+}
+
+function updateCutoffNotice() {
+  const el = document.getElementById('cutoff-notice');
+  if (!el) return;
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes();
+  if (h > 16 || (h === 16 && m >= 31)) {
+    const tom = new Date(now.getTime() + 86400000);
+    const tomStr = (tom.getMonth()+1) + '月' + tom.getDate() + '日';
+    el.innerHTML = '<div style="font-size:.82rem;color:#c53030;padding:8px 12px;background:#fff5f5;border-radius:8px;border-left:3px solid #e53e3e;margin-bottom:10px">⚠️ 已超過截單時間（16:31），此訂單將列入 <strong>'+tomStr+'</strong> 處理</div>';
+  } else {
+    el.innerHTML = '<div style="font-size:.8rem;color:#718096;text-align:center;margin-bottom:8px">每日 16:31 後下單，將列入隔日處理</div>';
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -599,6 +772,26 @@ async function loadOrders() {
   } catch (e) { loading(false); showAlert('查詢失敗'); }
 }
 
+function filterOrdersByDate(orders, dateVal) {
+  var d = new Date(dateVal + 'T12:00:00');
+  d.setDate(d.getDate() - 1);
+  var prevStr = d.getFullYear() + '-' +
+    ('0'+(d.getMonth()+1)).slice(-2) + '-' +
+    ('0'+d.getDate()).slice(-2);
+  return orders.filter(function(o) {
+    if (o.time.startsWith(dateVal) && o.time.slice(11, 16) < '16:31') return true;
+    return o.time.startsWith(prevStr) && o.time.slice(11, 16) >= '16:31';
+  });
+}
+
+function sortGroupsPendingFirst(groups) {
+  return groups.sort(function(a, b) {
+    var aC = a.items.every(function(it){ return it.status==='已確認'; }) ? 1 : 0;
+    var bC = b.items.every(function(it){ return it.status==='已確認'; }) ? 1 : 0;
+    return aC - bC;
+  });
+}
+
 function renderOrders() {
   if (!allOrders) return;
   const dateVal = document.getElementById('query-date').value;
@@ -608,13 +801,13 @@ function renderOrders() {
   const noDataEl = document.getElementById('no-orders');
   const filtered = idQuery
     ? allOrders.filter(function(o){ return String(o.orderId||'').toUpperCase().indexOf(idQuery)!==-1; })
-    : allOrders.filter(function(o){ return o.time.startsWith(dateVal); });
+    : filterOrdersByDate(allOrders, dateVal);
   const p = dateVal.split('-');
   document.getElementById('summary-date').textContent = idQuery ? '編號搜尋：'+idQuery : p[0]+'/'+p[1]+'/'+p[2];
   if (!filtered.length) { summaryEl.style.display='none'; noDataEl.style.display='block'; listEl.innerHTML=''; return; }
   noDataEl.style.display='none'; summaryEl.style.display='flex';
   document.getElementById('summary-total').textContent = filtered.reduce(function(s,o){return s+o.quantity;},0);
-  const groups = groupOrders(filtered);
+  const groups = sortGroupsPendingFirst(groupOrders(filtered.slice().reverse()));
   listEl.innerHTML = groups.map(function(g,i){
     const t = g.time.length>=16 ? g.time.substring(11,16) : '';
     const allConfirmed = g.items.every(function(it){ return it.status==='已確認'; });
@@ -623,12 +816,139 @@ function renderOrders() {
       : '<span class="status-badge badge-pending">待確認</span>';
     const idTag = g.orderId ? '<span style="font-size:.75rem;color:#718096;margin-left:6px">'+escHtml(g.orderId)+'</span>' : '';
     const totalQty = g.items.reduce(function(s,it){return s+it.quantity;},0);
+    const editBtn = !allConfirmed ? '<button class="btn-action" style="background:#ebf8ff;color:#2b6cb0" onclick="showEditModal(\''+escHtml(g.orderId)+'\')">✏️ 修改</button>' : '';
+    const dlBtn = g.orderId ? '<button class="btn-action" style="background:#e6fffa;color:#2c7a7b" onclick="downloadOrderImage(\''+escHtml(g.orderId)+'\')">📥 下載訂單</button>' : '';
     return '<div class="order-item">' +
-      '<div class="order-item-header"><span class="order-seq">#'+(i+1)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +
+      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +
       g.items.map(itemLine).join('') +
       '<div class="order-qty" style="margin-top:8px">本單共 <strong>'+totalQty+' 片</strong></div>' +
+      ((editBtn||dlBtn) ? '<div class="order-actions">'+editBtn+dlBtn+'</div>' : '') +
     '</div>';
   }).join('');
+}
+
+// ── 下載訂單圖片（仿訂貨單 PNG）─────────────────────────
+function mmRocDate(time) {
+  if (!time || time.length < 10) return '';
+  var y = parseInt(time.slice(0,4),10) - 1911;
+  var mo = parseInt(time.slice(5,7),10), da = parseInt(time.slice(8,10),10);
+  return y + ' 年 ' + mo + ' 月 ' + da + ' 日';
+}
+function downloadOrderImage(orderId) {
+  var items = (allOrders || []).filter(function(o){ return String(o.orderId) === String(orderId); });
+  if (!items.length) { showAlert('找不到訂單資料'); return; }
+  var custName = items[0].customerName || '';
+  var dateStr = mmRocDate(items[0].time || '');
+  var totalQty = items.reduce(function(s,it){ return s + (parseInt(it.quantity)||0); }, 0);
+
+  var FF = "'Microsoft JhengHei','Noto Sans TC',sans-serif";
+  var fBody = "16px " + FF, fSmall = "13.5px " + FF;
+  var W = 800, colX = [20,170,360,420,530,780];
+  var headerTop = 68, headerH = 38, pad = 8, lineH = 22, baseRowH = 44;
+
+  var meas = document.createElement('canvas').getContext('2d');
+  function wrap(text, maxW, font) {
+    meas.font = font; text = String(text==null?'':text);
+    if (text === '') return [''];
+    var lines = [], cur = '';
+    for (var i=0;i<text.length;i++){
+      var ch = text.charAt(i);
+      if (ch === '\n') { lines.push(cur); cur=''; continue; }
+      var t = cur + ch;
+      if (meas.measureText(t).width > maxW && cur !== '') { lines.push(cur); cur = ch; }
+      else cur = t;
+    }
+    lines.push(cur);
+    return lines;
+  }
+  function sizeText(it) {
+    var hh = dimDisp(it.height,400);
+    if (it.bottomW) return dimDisp(it.topW,150)+'／'+dimDisp(it.bottomW,150)+'（斜）× '+hh;
+    return dimDisp(it.topW,150)+' × '+hh;
+  }
+  var rows = items.map(function(it){
+    var modelLines = wrap(it.modelType, colX[1]-colX[0]-2*pad, fBody);
+    var sizeLines  = wrap(sizeText(it), colX[2]-colX[1]-2*pad, fBody);
+    var colorLines = wrap(it.color, colX[4]-colX[3]-2*pad, fBody);
+    var remarkLines= wrap(it.remark, colX[5]-colX[4]-2*pad, fSmall);
+    var maxL = Math.max(modelLines.length, sizeLines.length, colorLines.length, remarkLines.length, 1);
+    var h = Math.max(baseRowH, maxL*lineH + 2*pad);
+    return {it:it, modelLines:modelLines, sizeLines:sizeLines, colorLines:colorLines, remarkLines:remarkLines, h:h};
+  });
+  var tableTop = headerTop + headerH;
+  var rowsH = rows.reduce(function(s,r){ return s+r.h; }, 0);
+  var tableBottom = tableTop + rowsH;
+  var H = tableBottom + 90;
+
+  var scale = 2;
+  var canvas = document.createElement('canvas');
+  canvas.width = W*scale; canvas.height = H*scale;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle='#2d3748'; ctx.font='18px '+FF; ctx.textAlign='left';
+  ctx.fillText(dateStr, 20, 36);
+  ctx.fillStyle='#1a365d'; ctx.font='bold 28px '+FF; ctx.textAlign='center';
+  ctx.fillText(custName + '訂貨單', W/2, 38);
+  ctx.fillStyle='#2d3748'; ctx.font='18px '+FF; ctx.textAlign='right';
+  ctx.fillText('廠商：安奕木業', 780, 36);
+
+  ctx.strokeStyle='#2d3748'; ctx.lineWidth=2;
+  ctx.strokeRect(20, headerTop, 760, headerH + rowsH);
+  ctx.fillStyle='#ebf2fb'; ctx.fillRect(20, headerTop, 760, headerH);
+
+  function cellMid(i){ return (colX[i]+colX[i+1])/2; }
+  function block(lines, x, align, rowTop, rowH, lh, font, color) {
+    ctx.font = font; ctx.fillStyle = color; ctx.textAlign = align;
+    var bH = lines.length*lh, startY = rowTop + (rowH-bH)/2 + lh/2;
+    for (var i=0;i<lines.length;i++) ctx.fillText(lines[i], x, startY + i*lh);
+  }
+
+  ctx.strokeStyle='#2d3748'; ctx.lineWidth=1.5;
+  [colX[1],colX[2],colX[3],colX[4]].forEach(function(x){
+    ctx.beginPath(); ctx.moveTo(x, headerTop); ctx.lineTo(x, tableBottom); ctx.stroke();
+  });
+  ctx.beginPath(); ctx.moveTo(20, tableTop); ctx.lineTo(780, tableTop); ctx.stroke();
+
+  var hMid = headerTop + headerH/2;
+  ctx.font='bold 17px '+FF; ctx.fillStyle='#1a365d'; ctx.textAlign='center';
+  ctx.fillText('型式', cellMid(0), hMid);
+  ctx.fillText('尺寸', cellMid(1), hMid);
+  ctx.fillText('數量', cellMid(2), hMid);
+  ctx.fillText('顏色', cellMid(3), hMid);
+  ctx.fillText('備註', cellMid(4), hMid);
+
+  var y = tableTop;
+  rows.forEach(function(r, idx){
+    if (idx > 0) {
+      ctx.strokeStyle='#cbd5e0'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(780, y); ctx.stroke();
+    }
+    block(r.modelLines, cellMid(0), 'center', y, r.h, lineH, fBody, '#2d3748');
+    block(r.sizeLines, cellMid(1), 'center', y, r.h, lineH, fBody, '#2d3748');
+    block([String(r.it.quantity==null?'':r.it.quantity)], cellMid(2), 'center', y, r.h, lineH, fBody, '#2d3748');
+    block(r.colorLines, cellMid(3), 'center', y, r.h, lineH, fBody, '#2d3748');
+    block(r.remarkLines, colX[4]+pad, 'left', y, r.h, lineH, fSmall, '#4a5568');
+    y += r.h;
+  });
+
+  var fy = tableBottom + 32;
+  ctx.fillStyle='#1a365d'; ctx.font='bold 17px '+FF; ctx.textAlign='left';
+  ctx.fillText('總數：'+totalQty+' 片', 40, fy);
+  ctx.fillStyle='#2d3748'; ctx.font='16px '+FF;
+  ctx.fillText('經手人：__________', 320, fy);
+  ctx.fillText('核對：__________', 600, fy);
+  ctx.fillStyle='#718096'; ctx.font='14px '+FF;
+  ctx.fillText('訂單編號：'+(orderId||''), 40, fy+30);
+
+  try {
+    var url = canvas.toDataURL('image/png');
+    var a = document.createElement('a');
+    a.href = url; a.download = '訂貨單_'+(orderId||custName)+'.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch(e) { showAlert('產生圖片失敗'); }
 }
 
 // ══════════════════════════════════════════════
@@ -650,7 +970,7 @@ function renderAdminOrders() {
   const dateVal = document.getElementById('admin-date').value;
   const selectEl = document.getElementById('admin-search');
   const idQuery = (document.getElementById('admin-orderid').value||'').trim().toUpperCase();
-  const byDate = (allAdminOrders||[]).filter(function(o){ return o.time.startsWith(dateVal); });
+  const byDate = filterOrdersByDate(allAdminOrders||[], dateVal);
   const prev = selectEl.value;
   const names = [];
   byDate.forEach(function(o){ if(names.indexOf(o.customerName)===-1) names.push(o.customerName); });
@@ -672,7 +992,7 @@ function renderAdminOrders() {
   if (!filtered.length) { summaryEl.style.display='none'; noDataEl.style.display='block'; listEl.innerHTML=''; return; }
   noDataEl.style.display='none'; summaryEl.style.display='flex';
   document.getElementById('admin-summary-total').textContent = filtered.reduce(function(s,o){return s+o.quantity;},0);
-  const groups = groupOrders(filtered);
+  const groups = sortGroupsPendingFirst(groupOrders(filtered.slice().reverse()));
   listEl.innerHTML = groups.map(function(g,i){
     const t = g.time.length>=16 ? g.time.substring(11,16) : '';
     const allConfirmed = g.items.every(function(it){ return it.status==='已確認'; });
@@ -684,13 +1004,93 @@ function renderAdminOrders() {
     const rowIdxs = g.items.map(function(it){ return it.rowIndex; });
     const confirmBtn = allConfirmed ? '' : '<button class="btn-action btn-confirm" onclick="doConfirmGroup(['+rowIdxs.join(',')+'])">✓ 確認整單</button>';
     const deleteBtn = '<button class="btn-action btn-delete" onclick="doDeleteGroup(['+rowIdxs.join(',')+'])">✕ 刪除整單</button>';
+    const editBtn = '<button class="btn-action" style="background:#ebf8ff;color:#2b6cb0" onclick="showEditModal(\''+escHtml(g.orderId)+'\')">✏️ 修改</button>';
     return '<div class="order-item">' +
-      '<div class="order-item-header"><span class="order-seq">#'+(i+1)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +
+      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +
       g.items.map(itemLine).join('') +
       '<div class="order-qty" style="margin-top:8px">本單共 <strong>'+totalQty+' 片</strong></div>' +
-      '<div class="order-actions">'+confirmBtn+deleteBtn+'</div>' +
+      '<div class="order-actions">'+confirmBtn+deleteBtn+editBtn+'</div>' +
     '</div>';
   }).join('');
+}
+
+function showEditModal(orderId) {
+  const source = currentRole === 'admin' ? (allAdminOrders||[]) : (allOrders||[]);
+  const items = source.filter(function(o){ return o.orderId === orderId; });
+  if (!items.length) return;
+  function unitLbl(v) { return parseFloat(v) < 150 ? '公分' : '台分'; }
+  function inp(cls, val, type) {
+    type = type || 'text';
+    return '<input class="'+cls+'" type="'+type+'" value="'+escHtml(String(val||''))+'" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem">';
+  }
+  const itemHtml = items.map(function(it, idx) {
+    return '<div class="edit-item" data-row-index="'+it.rowIndex+'" style="border:1.5px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:10px">' +
+      (items.length > 1 ? '<div style="font-size:.78rem;font-weight:700;color:#a0aec0;margin-bottom:8px">第 '+(idx+1)+' 項</div>' : '') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">' +
+        '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">型式</label>'+inp('ei-model', it.modelType)+'</div>' +
+        '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">顏色</label><input class="ei-color" value="'+escHtml(String(it.color||''))+'" list="color-list" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem"></div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 72px;gap:8px;margin-bottom:8px">' +
+        '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">上寬 ('+unitLbl(it.topW)+')</label>'+inp('ei-topW', it.topW, 'number')+'</div>' +
+        '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">高度 ('+unitLbl(it.height)+')</label>'+inp('ei-height', it.height, 'number')+'</div>' +
+        '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">數量</label>'+inp('ei-qty', it.quantity, 'number')+'</div>' +
+      '</div>' +
+      (it.bottomW ? '<div style="margin-bottom:8px"><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">下寬 ('+unitLbl(it.bottomW)+')</label>'+inp('ei-bottomW', it.bottomW, 'number')+'</div>' : '') +
+      '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">備註</label>'+inp('ei-remark', it.remark)+'</div>' +
+    '</div>';
+  }).join('');
+  const overlay = document.createElement('div');
+  overlay.id = 'edit-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:flex;align-items:flex-end;justify-content:center';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:14px 14px 0 0;padding:20px 16px 32px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+      '<div style="font-weight:800;color:#2d3748;font-size:1rem">✏️ 修改訂單</div>' +
+      '<button onclick="closeEditModal()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#718096;line-height:1">✕</button>' +
+    '</div>' +
+    '<div id="edit-items-wrap">'+itemHtml+'</div>' +
+    '<div style="display:flex;gap:10px;margin-top:14px">' +
+      '<button onclick="closeEditModal()" style="flex:1;padding:12px;border:1.5px solid #3182ce;background:transparent;color:#3182ce;border-radius:9px;font-weight:700;cursor:pointer">取消</button>' +
+      '<button onclick="doUpdateOrder()" style="flex:2;padding:12px;background:#3182ce;color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">💾 儲存</button>' +
+    '</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+}
+
+function closeEditModal() {
+  const el = document.getElementById('edit-modal-overlay');
+  if (el) el.remove();
+}
+
+async function doUpdateOrder() {
+  const itemEls = document.querySelectorAll('#edit-items-wrap .edit-item');
+  const items = [];
+  let valid = true;
+  itemEls.forEach(function(el) {
+    const rowIndex = parseInt(el.dataset.rowIndex);
+    const modelRaw = el.querySelector('.ei-model').value.trim();
+    const entry = (window.modelMap||[]).find(function(m){ return m.code === modelRaw; });
+    const modelType = entry ? entry.systemType : modelRaw;
+    const color = el.querySelector('.ei-color').value.trim();
+    const topW = el.querySelector('.ei-topW').value.trim();
+    const height = el.querySelector('.ei-height').value.trim();
+    const qty = parseInt(el.querySelector('.ei-qty').value) || 0;
+    const bottomWEl = el.querySelector('.ei-bottomW');
+    const bottomW = bottomWEl ? bottomWEl.value.trim() : '';
+    const remark = el.querySelector('.ei-remark').value.trim();
+    if (!modelType || !color || !topW || !height || !qty) { valid = false; return; }
+    items.push({ rowIndex, modelType, color, topW, bottomW, height, quantity: qty, remark });
+  });
+  if (!valid) { showAlert('有必填欄位未填'); return; }
+  loading(true);
+  try {
+    const res = await gasApi('updateOrderItems', { ...authData(), items });
+    loading(false);
+    if (!res.success) { showAlert('儲存失敗：'+(res.error||'')); return; }
+    closeEditModal();
+    showAlert('修改已儲存！');
+    if (currentRole === 'admin') { allAdminOrders = null; loadAllOrders(); }
+    else { allOrders = null; loadOrders(); }
+  } catch(e) { loading(false); showAlert('連線失敗'); }
 }
 
 async function doConfirmGroup(rowIndexes) {
@@ -866,15 +1266,70 @@ function showConfirm(msg) {
 // ══════════════════════════════════════════════
 //  型式對照
 // ══════════════════════════════════════════════
+function mmCodeCmp(a, b) {
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+// 訂單頁自動完成排序：平永遠最前 → 自己廠商 → 通用 → 其他
+function mmAutocompleteOrder(list) {
+  function rank(m) {
+    if (m.code === '平') return -1;
+    var vs = m.vendors || [];
+    if (currentUser && vs.indexOf(currentUser) !== -1) return 0;
+    if (!vs.length) return 1;
+    return 2;
+  }
+  return list.slice().sort(function(a, b) {
+    var ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return mmCodeCmp(a.code, b.code);
+  });
+}
 async function loadModelMap() {
   try {
     const res = await gasApi('getModelMap', authData());
     window.modelMap = Array.isArray(res) ? res : [];
     const dl = document.getElementById('model-codes-list');
-    if (dl) dl.innerHTML = window.modelMap.map(function(m){
-      return '<option value="'+escHtml(m.code)+'">'+escHtml(m.systemType)+'</option>';
+    if (dl) dl.innerHTML = mmAutocompleteOrder(window.modelMap).map(function(m){
+      return '<option value="'+escHtml(m.code)+'"></option>';
     }).join('');
+    renderModelMap();
   } catch(e) {}
+}
+async function mmLoadAccounts() {
+  if (window.mmAccounts && window.mmAccounts.length) { mmRenderVendorChecks(); return; }
+  try {
+    const list = await gasApi('getAllAccounts', authData());
+    window.mmAccounts = Array.isArray(list) ? list : [];
+    mmRenderVendorChecks();
+    renderMmSavedList();
+  } catch(e) {}
+}
+function mmVendorLabel(username) {
+  var a = (window.mmAccounts || []).find(function(x){ return x.username === username; });
+  return a ? a.customerName : username;
+}
+function mmRenderVendorChecks() {
+  var wrap = document.getElementById('mm-form-vendors');
+  if (!wrap) return;
+  var accs = window.mmAccounts || [];
+  if (!accs.length) { wrap.innerHTML = '<span style="font-size:.78rem;color:#a0aec0">（載入客戶帳號中…）</span>'; return; }
+  var nameCount = {};
+  accs.forEach(function(a){ nameCount[a.customerName] = (nameCount[a.customerName]||0) + 1; });
+  wrap.innerHTML = accs.map(function(a){
+    var label = nameCount[a.customerName] > 1 ? a.customerName+'（'+a.username+'）' : a.customerName;
+    return '<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:#4a5568;cursor:pointer;white-space:nowrap">'+
+      '<input type="checkbox" value="'+escHtml(a.username)+'"> '+escHtml(label)+'</label>';
+  }).join('');
+}
+function mmGetCheckedVendors() {
+  var out = [];
+  document.querySelectorAll('#mm-form-vendors input[type=checkbox]:checked').forEach(function(c){ out.push(c.value); });
+  return out;
+}
+function mmSetCheckedVendors(vendors) {
+  var set = {};
+  (vendors||[]).forEach(function(v){ set[v] = 1; });
+  document.querySelectorAll('#mm-form-vendors input[type=checkbox]').forEach(function(c){ c.checked = !!set[c.value]; });
 }
 
 function applyModelCode(gid, val) {
@@ -894,17 +1349,49 @@ function applyModelCode(gid, val) {
       const holeChk = document.getElementById('s'+sid+'-hole');
       if (holeChk && !holeChk.checked) { holeChk.checked = true; toggleHole(sid); }
       applyHolePreset(sid, mapping);
+    } else if (window.lockedHoles[sid]) {
+      delete window.lockedHoles[sid];
+      const chk = document.getElementById('s'+sid+'-hole');
+      if (chk) { delete chk.dataset.locked; chk.checked = false; }
+      const fw = document.getElementById('s'+sid+'-hole-fields-wrap');
+      const ld = document.getElementById('s'+sid+'-hole-locked-display');
+      if (fw) fw.style.display = '';
+      if (ld) ld.style.display = 'none';
+      toggleHole(sid);
     }
   });
 }
 
 function applyHolePreset(sid, mapping) {
+  const holes = mapping.holes && mapping.holes.length ? mapping.holes : null;
+  const chk = document.getElementById('s'+sid+'-hole');
+  if (holes) {
+    // 多洞或單洞（含 holes 陣列）：鎖定
+    window.lockedHoles[sid] = holes;
+    if (chk) { chk.dataset.locked = '1'; }
+    const fieldsWrap = document.getElementById('s'+sid+'-hole-fields-wrap');
+    const lockedDisp = document.getElementById('s'+sid+'-hole-locked-display');
+    if (fieldsWrap) fieldsWrap.style.display = 'none';
+    if (lockedDisp) lockedDisp.style.display = 'block';
+    updateHolePreview(sid);
+    return;
+  }
+  // 舊格式（無 holes 陣列）：可編輯
+  delete window.lockedHoles[sid];
+  if (chk) delete chk.dataset.locked;
+  const fieldsWrap = document.getElementById('s'+sid+'-hole-fields-wrap');
+  const lockedDisp = document.getElementById('s'+sid+'-hole-locked-display');
+  if (fieldsWrap) fieldsWrap.style.display = '';
+  if (lockedDisp) lockedDisp.style.display = 'none';
   function setF(key, valWithUnit) {
-    if (!valWithUnit) return;
-    const m = valWithUnit.match(/^([\d.]+)(公分|台分|台寸)$/);
-    if (!m) return;
     const el = document.getElementById('s'+sid+'-hole'+key);
     const uEl = document.getElementById('s'+sid+'-hole'+key+'-u');
+    if (!valWithUnit) {
+      if (el) { el.value = ''; delete el.dataset.manual; el.classList.remove('hole-input-auto'); }
+      return;
+    }
+    const m = valWithUnit.match(/^([\d.]+)(公分|台分|台寸)$/);
+    if (!m) return;
     if (el) { el.value = m[1]; delete el.dataset.manual; el.classList.remove('hole-input-auto'); }
     if (uEl) uEl.value = m[2].replace('台','');
   }
@@ -915,64 +1402,392 @@ function applyHolePreset(sid, mapping) {
 }
 
 // ── 型式對照 admin 管理 ──
+function mmUnitSel(id, val) {
+  function opt(u) { return '<option'+(val===u?' selected':'')+'>'+u+'</option>'; }
+  return '<select id="'+escHtml(id)+'" onchange="mmUpdateMmPreview()" style="padding:5px 2px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.78rem;color:#2b6cb0;background:#ebf8ff;flex-shrink:0">'+opt('台寸')+opt('公分')+opt('台分')+'</select>';
+}
+function mmHoleFieldHtml(label, idx, key, val, unit) {
+  var id = 'mm-h-'+idx+'-'+key;
+  return '<div style="display:flex;flex-direction:column;gap:2px;flex:0 0 calc(50% - 4px)">' +
+    '<label style="font-size:.72rem;color:#2b6cb0">'+label+'</label>' +
+    '<div style="display:flex;gap:3px">' +
+      '<input id="'+escHtml(id)+'" type="number" step="0.1" min="0" placeholder="0" value="'+escHtml(val||'')+'" oninput="mmUpdateMmPreview()" style="flex:1;min-width:0;padding:7px 8px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
+      mmUnitSel(id+'-u', unit||'台寸') +
+    '</div>' +
+  '</div>';
+}
+function mmRenderHoleForm() {
+  var wrap = document.getElementById('mm-holes-wrap');
+  if (!wrap) return;
+  var html = '';
+  for (var i = 0; i < window.mmFormHoles.length; i++) {
+    var h = window.mmFormHoles[i];
+    if (i > 0) {
+      var gid = 'mm-h-'+i+'-gap';
+      html += '<div style="display:flex;align-items:center;gap:6px;margin:8px 0">' +
+        '<div style="flex:1;border-top:1px dashed #bee3f8"></div>' +
+        '<span style="font-size:.75rem;color:#718096;white-space:nowrap">洞距</span>' +
+        '<input id="'+escHtml(gid)+'" type="number" step="0.1" min="0" placeholder="0" value="'+escHtml(h.gap||'')+'" oninput="mmUpdateMmPreview()" style="width:60px;padding:5px 6px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
+        mmUnitSel(gid+'-u', h.gap_u||'台寸') +
+        '<div style="flex:1;border-top:1px dashed #bee3f8"></div>' +
+      '</div>';
+    }
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+      '<span style="font-size:.78rem;font-weight:700;color:#2b6cb0">洞 '+(i+1)+'</span>' +
+      (window.mmFormHoles.length > 1 ? '<button onclick="mmRemoveHoleRow('+i+')" style="background:transparent;border:1px solid #e53e3e;color:#e53e3e;border-radius:4px;padding:2px 7px;font-size:.75rem;cursor:pointer">✕</button>' : '') +
+    '</div>';
+    if (i === 0) {
+      html += '<div style="display:flex;gap:16px;margin-bottom:6px">' +
+        '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="mm-center-h"'+(h.centerH?' checked':'')+' onchange="mmToggleCenter()"> 左右置中</label>' +
+        '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="mm-center-v"'+(h.centerV?' checked':'')+' onchange="mmToggleCenter()"> 上下置中</label>' +
+      '</div>';
+    }
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">';
+    if (i === 0) {
+      if (!h.centerV) html += mmHoleFieldHtml('距高', i, 'distT', h.distT||'', h.distT_u||'台寸');
+      if (!h.centerH) html += mmHoleFieldHtml('距左', i, 'distL', h.distL||'', h.distL_u||'台寸');
+    }
+    html += mmHoleFieldHtml('洞寬', i, 'holeW', h.holeW||'', h.holeW_u||'台寸');
+    html += mmHoleFieldHtml('洞高', i, 'holeH', h.holeH||'', h.holeH_u||'台寸');
+    html += '</div>';
+  }
+  wrap.innerHTML = html;
+}
+function mmSaveHoleFormValues() {
+  function setIf(idx, field, id) {
+    var e = document.getElementById(id);
+    if (e) {
+      window.mmFormHoles[idx][field] = e.value.trim();
+      var u = document.getElementById(id+'-u');
+      if (u) window.mmFormHoles[idx][field+'_u'] = u.value;
+    }
+  }
+  for (var i = 0; i < window.mmFormHoles.length; i++) {
+    if (i===0) {
+      var ch = document.getElementById('mm-center-h'), cv = document.getElementById('mm-center-v');
+      if (ch) window.mmFormHoles[0].centerH = ch.checked;
+      if (cv) window.mmFormHoles[0].centerV = cv.checked;
+      setIf(0,'distT','mm-h-0-distT');
+      setIf(0,'distL','mm-h-0-distL');
+    } else {
+      setIf(i,'gap','mm-h-'+i+'-gap');
+    }
+    setIf(i,'holeW','mm-h-'+i+'-holeW');
+    setIf(i,'holeH','mm-h-'+i+'-holeH');
+  }
+}
+function mmToggleCenter() {
+  mmSaveHoleFormValues();
+  mmRenderHoleForm();
+  mmUpdateMmPreview();
+}
+function mmUpdateMmPreview() {
+  var box = document.getElementById('mm-hole-preview');
+  if (!box) return;
+  function gv(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
+  var refW = gv('mm-ref-w'), refWu = gv('mm-ref-w-u')||'台寸';
+  var refH = gv('mm-ref-h'), refHu = gv('mm-ref-h-u')||'台寸';
+  var dW = unitToMm(parseFloat(refW)||0, refWu.replace('台',''));
+  var dH = unitToMm(parseFloat(refH)||0, refHu.replace('台',''));
+  if (!dW||!dH) { box.innerHTML='<div class="hole-note">填入參考門寬/門高即可預覽</div>'; return; }
+  var holes = mmHolesFromForm();
+  var computed = calcHolesLayout(holes, dW, dH);
+  box.innerHTML = drawHolesSVG(dW, dH, computed, 100, 180);
+}
+function mmAddHoleRow() {
+  mmSaveHoleFormValues();
+  window.mmFormHoles.push({gap:'', gap_u:'台寸', holeW:'', holeW_u:'台寸', holeH:'', holeH_u:'台寸'});
+  mmRenderHoleForm();
+  mmUpdateMmPreview();
+}
+function mmRemoveHoleRow(i) {
+  mmSaveHoleFormValues();
+  window.mmFormHoles.splice(i, 1);
+  mmRenderHoleForm();
+  mmUpdateMmPreview();
+}
 function renderModelMap() {
   const list = document.getElementById('modelmap-list');
   if (!list) return;
+  window.mmEditIndex = -1;
+  list.innerHTML =
+    '<div style="border:1.5px solid #bee3f8;border-radius:8px;padding:12px;background:#ebf8ff;margin-bottom:14px">' +
+      '<div style="font-size:.8rem;font-weight:700;color:#2b6cb0;margin-bottom:8px">新增對照</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
+        '<input id="mm-form-code" placeholder="客戶代碼（如 378-2）" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
+        '<span style="color:#a0aec0;flex-shrink:0">→</span>' +
+        '<input id="mm-form-type" placeholder="系統型式（如 103）" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
+        '<input id="mm-form-remark" placeholder="自動帶入備註（選填）" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
+        '<label style="display:flex;align-items:center;gap:5px;font-size:.85rem;white-space:nowrap;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="mm-form-hole" onchange="mmToggleFormHole(this.checked)"> 挖洞</label>' +
+      '</div>' +
+      '<div id="mm-form-hole-section" style="display:none">' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
+          '<span style="font-size:.75rem;color:#718096;white-space:nowrap">參考門寬</span>' +
+          '<input id="mm-ref-w" type="number" step="0.1" min="0" placeholder="0" oninput="mmUpdateMmPreview()" style="width:70px;padding:6px 8px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
+          mmUnitSel('mm-ref-w-u','台分') +
+          '<span style="font-size:.75rem;color:#718096;white-space:nowrap">門高</span>' +
+          '<input id="mm-ref-h" type="number" step="0.1" min="0" placeholder="0" oninput="mmUpdateMmPreview()" style="width:70px;padding:6px 8px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
+          mmUnitSel('mm-ref-h-u','台分') +
+        '</div>' +
+        '<div style="display:flex;gap:12px;align-items:flex-start">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div id="mm-holes-wrap"></div>' +
+            '<button onclick="mmAddHoleRow()" style="margin-top:6px;padding:5px 14px;background:transparent;border:1.5px solid #2b6cb0;color:#2b6cb0;border-radius:6px;font-size:.82rem;cursor:pointer">＋ 新增洞</button>' +
+          '</div>' +
+          '<div id="mm-hole-preview" style="flex-shrink:0;min-width:60px;text-align:center"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-bottom:10px">' +
+        '<div style="font-size:.78rem;color:#2b6cb0;font-weight:700;margin-bottom:5px">指定廠商（不勾＝通用，所有人可見）</div>' +
+        '<div id="mm-form-vendors" style="display:flex;flex-wrap:wrap;gap:6px 14px;max-height:120px;overflow-y:auto;padding:7px 8px;border:1.5px solid #bee3f8;border-radius:6px;background:#fff"></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button id="mm-add-btn" onclick="mmAddFromForm()" style="padding:7px 18px;background:#2b6cb0;color:#fff;border:none;border-radius:7px;font-size:.88rem;font-weight:700;cursor:pointer">＋ 加入清單</button>' +
+        '<button id="mm-cancel-btn" onclick="mmCancelEdit()" style="display:none;padding:7px 18px;background:transparent;border:1.5px solid #a0aec0;color:#718096;border-radius:7px;font-size:.88rem;font-weight:700;cursor:pointer">取消</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:.8rem;font-weight:700;color:#4a5568;margin-bottom:6px">已加入的對照</div>' +
+    '<div id="mm-saved-list"></div>';
+  renderMmSavedList();
+  if (currentRole === 'admin') mmLoadAccounts();
+}
+function mmResetForm() {
+  document.getElementById('mm-form-code').value='';
+  document.getElementById('mm-form-type').value='';
+  document.getElementById('mm-form-remark').value='';
+  document.getElementById('mm-form-hole').checked = false;
+  window.mmFormHoles = [];
+  window.mmEditIndex = -1;
+  mmToggleFormHole(false);
+  mmSetCheckedVendors([]);
+  const addBtn = document.getElementById('mm-add-btn');
+  if (addBtn) addBtn.textContent = '＋ 加入清單';
+  const cancelBtn = document.getElementById('mm-cancel-btn');
+  if (cancelBtn) cancelBtn.style.display = 'none';
+}
+function mmCancelEdit() { mmResetForm(); }
+function mmToggleFormHole(checked) {
+  var d = document.getElementById('mm-form-hole-section');
+  if (!d) return;
+  d.style.display = checked ? 'block' : 'none';
+  if (checked && window.mmFormHoles.length === 0) {
+    window.mmFormHoles = [{distT:'', distT_u:'台寸', distL:'', distL_u:'台寸', holeW:'', holeW_u:'台寸', holeH:'', holeH_u:'台寸'}];
+    mmRenderHoleForm();
+    mmUpdateMmPreview();
+  }
+}
+function mmHolesFromForm() {
+  mmSaveHoleFormValues();
+  return window.mmFormHoles.map(function(h, i) {
+    var obj = {
+      holeW: (h.holeW||'')+(h.holeW_u||'台寸'),
+      holeH: (h.holeH||'')+(h.holeH_u||'台寸')
+    };
+    if (i===0) {
+      obj.centerH = !!h.centerH;
+      obj.centerV = !!h.centerV;
+      obj.distT = h.centerV ? '' : (h.distT||'')+(h.distT_u||'台寸');
+      obj.distL = h.centerH ? '' : (h.distL||'')+(h.distL_u||'台寸');
+    } else {
+      obj.gap = (h.gap||'')+(h.gap_u||'台寸');
+    }
+    return obj;
+  });
+}
+function mmAddFromForm() {
+  const code = (document.getElementById('mm-form-code').value || '').trim();
+  const type = (document.getElementById('mm-form-type').value || '').trim();
+  if (!code || !type) { showAlert('請填寫客戶代碼和系統型式'); return; }
+  const hole = document.getElementById('mm-form-hole').checked;
+  function fv(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  const holes = hole ? mmHolesFromForm() : [];
+  const entry = { code: code, systemType: type, remark: fv('mm-form-remark'), hole: hole, holes: holes, vendors: mmGetCheckedVendors() };
+  if (window.mmEditIndex >= 0) { window.modelMap[window.mmEditIndex] = entry; }
+  else { window.modelMap.push(entry); }
+  renderMmSavedList();
+  mmResetForm();
+}
+function mmRowHtml(m, i) {
+  var holeTag = '';
+  if (m.hole && m.holes && m.holes.length) {
+    var summary = m.holes.map(function(h, hi) {
+      var parts = [];
+      if (hi===0&&h.distT) parts.push('距高'+mmDispUnit(h.distT));
+      if (hi===0&&h.distL) parts.push('距左'+mmDispUnit(h.distL));
+      if (hi>0&&h.gap) parts.push('洞距'+mmDispUnit(h.gap));
+      if (h.holeW) parts.push('洞寬'+mmDispUnit(h.holeW));
+      if (h.holeH) parts.push('洞高'+mmDispUnit(h.holeH));
+      return '洞'+(hi+1)+' '+parts.join(' ');
+    }).join('　');
+    holeTag = '<span style="font-size:.72rem;color:#2b6cb0;background:#ebf8ff;padding:2px 6px;border-radius:4px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;display:inline-block">挖洞 <span style="color:#4a5568;font-weight:400">'+escHtml(summary)+'</span></span>';
+  } else if (m.hole) {
+    holeTag = '<span style="font-size:.75rem;color:#2b6cb0;background:#ebf8ff;padding:2px 6px;border-radius:4px;white-space:nowrap">挖洞</span>';
+  }
+  return '<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;margin-bottom:6px">' +
+    '<span style="font-weight:700;color:#2d3748;font-size:.9rem">' + escHtml(m.code) + '</span>' +
+    '<span style="color:#a0aec0;font-size:.8rem">→</span>' +
+    '<span style="font-weight:700;color:#2b6cb0;font-size:.9rem">' + escHtml(m.systemType) + '</span>' +
+    (m.remark ? '<span style="flex:1;color:#718096;font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(m.remark) + '</span>' : '<span style="flex:1"></span>') +
+    holeTag +
+    '<button onclick="mmEdit(' + i + ')" style="background:transparent;border:1px solid #3182ce;color:#3182ce;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✎</button>' +
+    '<button onclick="mmDel(' + i + ')" style="background:transparent;border:1px solid #e53e3e;color:#e53e3e;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✕</button>' +
+  '</div>';
+}
+function mmGroupHeader(text) {
+  return '<div style="font-size:.78rem;font-weight:700;color:#2b6cb0;margin:10px 0 6px;padding-bottom:3px;border-bottom:1.5px solid #bee3f8">' + escHtml(text) + '</div>';
+}
+function renderMmSavedList() {
+  const el = document.getElementById('mm-saved-list');
+  if (!el) return;
   if (!window.modelMap.length) {
-    list.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:20px 0">尚無資料，點「＋ 新增」新增</p>';
+    el.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:14px 0;font-size:.85rem">尚無資料</p>';
     return;
   }
-  list.innerHTML = window.modelMap.map(function(m, i){ return mmCard(m, i); }).join('');
+  // 分組：通用（沒勾廠商）最上，其餘每個廠商一區（綁多廠商者出現在每區）
+  var generic = [], vendorOrder = [], vendorGroups = {};
+  window.modelMap.forEach(function(m, idx) {
+    var vs = m.vendors || [];
+    if (!vs.length) { generic.push({ m: m, i: idx }); return; }
+    vs.forEach(function(u) {
+      if (!vendorGroups[u]) { vendorGroups[u] = []; vendorOrder.push(u); }
+      vendorGroups[u].push({ m: m, i: idx });
+    });
+  });
+  function genericCmp(a, b) {
+    var af = a.m.code==='平'?0:1, bf = b.m.code==='平'?0:1;
+    if (af !== bf) return af - bf;
+    return mmCodeCmp(a.m.code, b.m.code);
+  }
+  function codeCmp(a, b) { return mmCodeCmp(a.m.code, b.m.code); }
+  vendorOrder.sort(function(a, b){ return mmCodeCmp(mmVendorLabel(a), mmVendorLabel(b)); });
+  var html = '';
+  if (generic.length) {
+    html += mmGroupHeader('通用（所有人可見）');
+    html += generic.sort(genericCmp).map(function(o){ return mmRowHtml(o.m, o.i); }).join('');
+  }
+  vendorOrder.forEach(function(u) {
+    html += mmGroupHeader(mmVendorLabel(u));
+    html += vendorGroups[u].sort(codeCmp).map(function(o){ return mmRowHtml(o.m, o.i); }).join('');
+  });
+  el.innerHTML = html;
 }
-
-function mmCard(m, i) {
-  const hd = m.hole ? 'flex' : 'none';
-  return '<div style="border:1.5px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px;background:#f7fafc">' +
-    '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
-      '<input placeholder="客戶代碼（如378-2）" value="'+escHtml(m.code)+'" oninput="mmSet('+i+',\'code\',this.value)" style="flex:1;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.88rem">' +
-      '<span style="color:#a0aec0">→</span>' +
-      '<input placeholder="系統型式（如103）" value="'+escHtml(m.systemType)+'" oninput="mmSet('+i+',\'systemType\',this.value)" style="flex:1;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.88rem">' +
-      '<button class="btn-remove-row" onclick="mmDel('+i+')">✕</button>' +
-    '</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">' +
-      '<input placeholder="自動帶入備註（選填）" value="'+escHtml(m.remark)+'" oninput="mmSet('+i+',\'remark\',this.value)" style="flex:1;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.88rem">' +
-      '<label style="display:flex;align-items:center;gap:5px;font-size:.85rem;white-space:nowrap;color:#4a5568;cursor:pointer"><input type="checkbox" '+(m.hole?'checked':'')+' onchange="mmHoleToggle('+i+',this.checked)"> 挖洞</label>' +
-    '</div>' +
-    '<div id="mm-hole-'+i+'" style="display:'+hd+';flex-wrap:wrap;gap:6px">' +
-      mmHF('距底',i,'distB',m.distB)+mmHF('距高',i,'distT',m.distT)+
-      mmHF('距左',i,'distL',m.distL)+mmHF('距右',i,'distR',m.distR)+
-      mmHF('洞寬',i,'holeW',m.holeW)+mmHF('洞高',i,'holeH',m.holeH)+
-    '</div>' +
-  '</div>';
+function mmDel(i) {
+  window.modelMap.splice(i, 1);
+  if (window.mmEditIndex >= 0) mmResetForm();
+  renderMmSavedList();
 }
-function mmHF(label, i, key, val) {
-  return '<div style="display:flex;flex-direction:column;gap:2px;flex:0 0 calc(33% - 4px)">' +
-    '<label style="font-size:.72rem;color:#718096">'+label+'</label>' +
-    '<input placeholder="如 5台寸" value="'+escHtml(val||'')+'" oninput="mmSet('+i+',\''+key+'\',this.value)" style="padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:.82rem">' +
-  '</div>';
-}
-function mmSet(i, key, val) { if (window.modelMap[i]) window.modelMap[i][key] = val; }
-function mmHoleToggle(i, checked) {
-  if (window.modelMap[i]) window.modelMap[i].hole = checked;
-  const d = document.getElementById('mm-hole-'+i);
-  if (d) d.style.display = checked ? 'flex' : 'none';
-}
-function mmDel(i) { window.modelMap.splice(i,1); renderModelMap(); }
-function addModelMapRow() {
-  window.modelMap.push({code:'',systemType:'',remark:'',hole:false,distB:'',distT:'',distL:'',distR:'',holeW:'',holeH:''});
-  renderModelMap();
+function mmEdit(i) {
+  const m = window.modelMap[i];
+  window.mmEditIndex = i;
+  function setEl(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
+  setEl('mm-form-code', m.code);
+  setEl('mm-form-type', m.systemType);
+  setEl('mm-form-remark', m.remark || '');
+  mmSetCheckedVendors(m.vendors || []);
+  const holeChk = document.getElementById('mm-form-hole');
+  if (holeChk) holeChk.checked = !!m.hole;
+  window.mmFormHoles = [];
+  if (m.hole && m.holes && m.holes.length) {
+    window.mmFormHoles = m.holes.map(function(h, idx) {
+      function parseVU(val, defU) {
+        var mt = val ? val.match(/^([\d.]+)(公分|台分|台寸)$/) : null;
+        return mt ? {v: mt[1], u: mt[2]} : {v: '', u: defU||'台寸'};
+      }
+      var obj = {};
+      var hw = parseVU(h.holeW,'台寸'), hh = parseVU(h.holeH,'台寸');
+      obj.holeW=hw.v; obj.holeW_u=hw.u; obj.holeH=hh.v; obj.holeH_u=hh.u;
+      if (idx===0) {
+        obj.centerH = !!h.centerH; obj.centerV = !!h.centerV;
+        var dt=parseVU(h.distT,'台寸'), dl=parseVU(h.distL,'台寸');
+        obj.distT=dt.v; obj.distT_u=dt.u; obj.distL=dl.v; obj.distL_u=dl.u;
+      } else {
+        var gp=parseVU(h.gap,'台寸'); obj.gap=gp.v; obj.gap_u=gp.u;
+      }
+      return obj;
+    });
+    mmToggleFormHole(true);
+    mmRenderHoleForm();
+    mmUpdateMmPreview();
+  } else {
+    mmToggleFormHole(!!m.hole);
+  }
+  renderMmSavedList();
+  const addBtn = document.getElementById('mm-add-btn');
+  if (addBtn) addBtn.textContent = '💾 更新';
+  const cancelBtn = document.getElementById('mm-cancel-btn');
+  if (cancelBtn) cancelBtn.style.display = 'inline-block';
+  const formEl = document.getElementById('mm-form-code');
+  if (formEl) formEl.focus();
 }
 async function doSaveModelMap() {
   loading(true);
   try {
     const res = await gasApi('saveModelMap', Object.assign(authData(), { rows: window.modelMap }));
     loading(false);
+    if (res.success) { showAlert('儲存成功！'); loadModelMap(); }
+    else showAlert('儲存失敗：'+(res.error||''));
+  } catch(e) { loading(false); showAlert('連線失敗'); }
+}
+
+// ══ 顏色清單 ══
+window.colorList = [];
+async function loadColorList() {
+  try {
+    const res = await gasApi('getColorList', authData());
+    window.colorList = Array.isArray(res) ? res : [];
+    const dl = document.getElementById('color-list');
+    if (dl) dl.innerHTML = window.colorList.map(function(c){ return '<option value="'+escHtml(c)+'">'; }).join('');
+    renderColorList();
+  } catch(e) {}
+}
+function renderColorList() {
+  const list = document.getElementById('colorlist-list');
+  if (!list) return;
+  list.innerHTML =
+    '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">' +
+      '<input id="cl-form-name" placeholder="顏色名稱（如 白橡木）" style="flex:1;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem;background:#ebf8ff">' +
+      '<button onclick="clAdd()" style="padding:7px 16px;background:#2b6cb0;color:#fff;border:none;border-radius:7px;font-size:.88rem;font-weight:700;cursor:pointer;white-space:nowrap">＋ 加入</button>' +
+    '</div>' +
+    '<div style="font-size:.8rem;font-weight:700;color:#4a5568;margin-bottom:6px">已加入的顏色</div>' +
+    '<div id="cl-saved-list"></div>';
+  renderClSavedList();
+}
+function clAdd() {
+  const inp = document.getElementById('cl-form-name');
+  const val = (inp ? inp.value : '').trim();
+  if (!val) { showAlert('請填寫顏色名稱'); return; }
+  if (window.colorList.indexOf(val) >= 0) { showAlert('已有這個顏色'); return; }
+  window.colorList.push(val);
+  renderClSavedList();
+  if (inp) inp.value = '';
+}
+function renderClSavedList() {
+  const el = document.getElementById('cl-saved-list');
+  if (!el) return;
+  if (!window.colorList.length) {
+    el.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:12px 0;font-size:.85rem">尚無顏色</p>';
+    return;
+  }
+  el.innerHTML = window.colorList.map(function(c, i) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;margin-bottom:6px">' +
+      '<span style="flex:1;font-size:.9rem;color:#2d3748">' + escHtml(c) + '</span>' +
+      '<button onclick="clDel('+i+')" style="background:transparent;border:1px solid #e53e3e;color:#e53e3e;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer">✕</button>' +
+    '</div>';
+  }).join('');
+}
+function clDel(i) { window.colorList.splice(i, 1); renderClSavedList(); }
+async function doSaveColorList() {
+  loading(true);
+  try {
+    const res = await gasApi('saveColorList', Object.assign(authData(), { colors: window.colorList }));
+    loading(false);
     if (res.success) {
-      const dl = document.getElementById('model-codes-list');
-      if (dl) dl.innerHTML = window.modelMap.map(function(m){
-        return '<option value="'+escHtml(m.code)+'">'+escHtml(m.systemType)+'</option>';
-      }).join('');
+      const dl = document.getElementById('color-list');
+      if (dl) dl.innerHTML = window.colorList.map(function(c){ return '<option value="'+escHtml(c)+'">'; }).join('');
       showAlert('儲存成功！');
+      loadColorList();
     } else showAlert('儲存失敗：'+(res.error||''));
   } catch(e) { loading(false); showAlert('連線失敗'); }
 }
