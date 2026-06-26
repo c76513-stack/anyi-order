@@ -9,8 +9,9 @@ window.mmEditIndex = -1;
 window.mmAccounts = [];
 
 async function gasApi(action, data) {
-  const payload = encodeURIComponent(JSON.stringify(Object.assign({ action }, data || {})));
-  const resp = await fetch(GAS_URL + '?payload=' + payload, { redirect: 'follow' });
+  // 用 POST 送，資料放 body（text/plain → 不觸發 CORS 預檢），避開 GET 網址長度限制
+  const body = JSON.stringify(Object.assign({ action }, data || {}));
+  const resp = await fetch(GAS_URL, { method: 'POST', body: body, redirect: 'follow' });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   return resp.json();
 }
