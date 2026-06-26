@@ -61,6 +61,8 @@ window.addEventListener('beforeinstallprompt', function (e) {
   _installPrompt = e;
   const btn = document.getElementById('install-btn');
   if (btn) btn.style.display = 'block';
+  // 瀏覽器確實可安裝時才跳橫幅（已裝過/不支援的不會跳）
+  try { showInstallBanner(); } catch (e2) {}
 });
 window.addEventListener('appinstalled', function () {
   _installPrompt = null;
@@ -83,12 +85,14 @@ function getInstallEnv() {
   if (/Line\/|FBAN|FBAV|FB_IAB|Instagram|Messenger|MicroMessenger/i.test(ua)) return 'inapp';
   var isIos = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
   if (isIos) return (/Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)) ? 'ios-safari' : 'ios-other';
-  return 'other';
+  return /Android/i.test(ua) ? 'android' : 'desktop';
 }
 function showInstallBanner() {
   if (installBannerDismissedToday()) return;
   var env = getInstallEnv();
   if (env === 'installed') return;
+  // Android／桌機：只有瀏覽器確實提供安裝時才跳（已裝過、不支援的就不跳）
+  if ((env === 'android' || env === 'desktop') && !_installPrompt) return;
   var el = document.getElementById('install-banner');
   var body = document.getElementById('install-banner-body');
   if (!el || !body) return;
@@ -102,11 +106,14 @@ function showInstallBanner() {
   } else if (env === 'ios-other') {
     html = '<div class="ib-title">📲 想裝到桌面嗎？</div>' +
       '<div class="ib-text">iPhone 請改用 <b>Safari</b> 開啟這個網址，才能「加入主畫面」變成 App。</div>';
-  } else {
+  } else if (env === 'desktop') {
+    html = '<div class="ib-title">📥 把訂單系統裝成應用程式</div>' +
+      '<div class="ib-text">裝到電腦後，下次從桌面/工作列直接開、全螢幕使用，不用每次找網址。</div>' +
+      '<button class="ib-install-btn" onclick="doInstallFromBanner()">📥 安裝</button>';
+  } else { // android
     html = '<div class="ib-title">📲 把訂單系統裝成 App</div>' +
       '<div class="ib-text">裝到桌面後，下次點圖示直接開、全螢幕使用，不用每次找網址。</div>' +
-      '<button class="ib-install-btn" onclick="doInstallFromBanner()">📲 安裝到手機</button>' +
-      '<div class="ib-hint">若按了沒反應，請點瀏覽器選單 →「安裝應用程式 / 加到主畫面」</div>';
+      '<button class="ib-install-btn" onclick="doInstallFromBanner()">📲 安裝到手機</button>';
   }
   html += '<div class="ib-actions"><a href="#" onclick="dismissInstallBannerToday();return false;">今天不再提醒</a></div>';
   body.innerHTML = html;
@@ -124,8 +131,10 @@ function doInstallFromBanner() {
   if (_installPrompt) {
     _installPrompt.prompt();
     _installPrompt.userChoice.then(function (r) { if (r.outcome === 'accepted') { _installPrompt = null; hideInstallBanner(); } });
+  } else if (getInstallEnv() === 'desktop') {
+    showAlert('請點網址列右邊的安裝圖示，或瀏覽器選單 →「安裝此網站為應用程式」');
   } else {
-    showAlert('請點瀏覽器右上角的選單（⋮ 或 ⋯）→「安裝應用程式 / 加到主畫面」');
+    showAlert('請點瀏覽器選單（⋮）→「安裝應用程式 / 加到主畫面」');
   }
 }
 // 延遲一點再顯示，讓 beforeinstallprompt 先觸發（Android 一鍵鈕才會生效）
@@ -389,7 +398,7 @@ function addSizeRow(gid) {
   const num = container.children.length + 1;
   const row = document.createElement('div');
   row.className = 'size-row'; row.id = 'size-' + sid;
-  const uOpts = '<option value="公分">公分</option><option value="分">台分</option><option value="寸">台寸</option>';
+  const uOpts = '<option value="公分">公分</option><option value="分">尺</option><option value="寸">寸</option>';
   row.innerHTML =
     '<div class="size-main">' +
       '<span class="size-seq">' + num + '</span>' +
@@ -435,9 +444,9 @@ function toggleHole(sid) {
 }
 
 function buildHolePanel(sid) {
-  const uCm = '<option value="公分" selected>公分</option><option value="分">台分</option><option value="寸">台寸</option>';
-  const uCun = '<option value="公分">公分</option><option value="分">台分</option><option value="寸" selected>台寸</option>';
-  const uPlain = '<option value="公分">公分</option><option value="分">台分</option><option value="寸">台寸</option>';
+  const uCm = '<option value="公分" selected>公分</option><option value="分">尺</option><option value="寸">寸</option>';
+  const uCun = '<option value="公分">公分</option><option value="分">尺</option><option value="寸" selected>寸</option>';
+  const uPlain = '<option value="公分">公分</option><option value="分">尺</option><option value="寸">寸</option>';
   // 距離欄：改動時清除配對欄的 manual，讓對側自動更新
   function df(key, label, defVal, uOpts) {
     return '<div class="hole-field"><label>'+label+'</label>' +
@@ -489,9 +498,25 @@ function holeDistUnit(sid, key) {
 // ══════════════════════════════════════════════
 function unitToMm(val, unit) {
   const v = parseFloat(val) || 0;
-  if (unit === '寸') return v * 100/3.3;   // 1台寸 = 1/0.33公分
-  if (unit === '分') return v * 10/3.3;    // 1台分 = 1/3.3公分
-  return v * 10;
+  if (unit === '寸' || unit === '台寸') return v * 100/3.3;   // 寸（台寸）= 1/0.33公分
+  if (unit === '分' || unit === '台分' || unit === '尺') return v * 10/3.3;  // 尺（=舊台分）= 1/3.3公分
+  return v * 10;   // 公分
+}
+// 顯示一律「寸 / 尺 / 公分」（吃得下舊的 台寸/台分/分）
+function unitLabel(u) {
+  if (u === '寸' || u === '台寸') return '寸';
+  if (u === '分' || u === '台分' || u === '尺') return '尺';
+  return '公分';
+}
+// 挖洞下拉的內部 value（寸 / 分 / 公分），給設定型式對照帶入時用
+function unitValue(u) {
+  if (u === '寸' || u === '台寸') return '寸';
+  if (u === '分' || u === '台分' || u === '尺') return '分';
+  return '公分';
+}
+// 把一段文字裡的舊單位換成新單位（避開「公分」不誤改）
+function normUnitsText(s) {
+  return String(s == null ? '' : s).replace(/台寸/g, '寸').replace(/台分/g, '尺').replace(/([\d.])\s*分/g, '$1尺');
 }
 function updateDimUnit(input, labelId, threshold) {
   const v = parseFloat(input.value);
@@ -501,14 +526,14 @@ function updateDimUnit(input, labelId, threshold) {
   if (el.dataset.manual === '1') return;
   const unit = v < threshold ? '公分' : '分';
   el.dataset.unit = unit;
-  el.textContent = unit === '分' ? '台分' : '公分';
+  el.textContent = unit === '分' ? '尺' : '公分';
 }
 function toggleDimUnit(el) {
   const cur = el.dataset.unit;
   if (!cur) return;
   const next = cur === '分' ? '公分' : '分';
   el.dataset.unit = next;
-  el.textContent = next === '分' ? '台分' : '公分';
+  el.textContent = next === '分' ? '尺' : '公分';
   el.dataset.manual = '1';
   const sid = el.dataset.sid;
   if (sid) { autoCalcHole(parseInt(sid)); updateHolePreview(parseInt(sid)); }
@@ -523,7 +548,7 @@ function dimUnit(val, threshold) {
 function dimDisp(v, threshold) {
   const n = parseFloat(v);
   if (!n) return escHtml(String(v));
-  return n < threshold ? n + '公分' : n + '台分';
+  return n < threshold ? n + '公分' : n + '尺';
 }
 
 // ── 角材計算 ──
@@ -545,7 +570,7 @@ function holeVal(sid, key) {
 function holeUnit(sid, key) {
   const el = document.getElementById('s'+sid+'-hole'+key+'-u');
   if (!el) return '公分';
-  return el.value === '分' ? '台分' : el.value === '寸' ? '台寸' : '公分';
+  return unitLabel(el.value);
 }
 function holeValMm(sid, key) {
   const el = document.getElementById('s'+sid+'-hole'+key);
@@ -637,9 +662,9 @@ function holeSpecText(sid) {
 }
 function valToMm(valWithUnit) {
   if (!valWithUnit) return 0;
-  var m = String(valWithUnit).match(/^([\d.]+)(公分|台分|台寸)$/);
+  var m = String(valWithUnit).match(/^([\d.]+)(公分|台分|台寸|尺|寸|分)$/);
   if (!m) return 0;
-  return unitToMm(parseFloat(m[1]), m[2].replace('台',''));
+  return unitToMm(parseFloat(m[1]), m[2]);
 }
 function calcHolesLayout(holes, doorWmm, doorHmm) {
   if (!holes || !holes.length) return [];
@@ -688,16 +713,16 @@ function drawHolesSVG(doorWmm, doorHmm, computed, maxW, maxH) {
 }
 function mmDispUnit(valWithUnit) {
   if (!valWithUnit) return '';
-  var m = String(valWithUnit).match(/^([\d.]+)(公分|台分|台寸)$/);
-  return m ? m[1]+m[2] : valWithUnit;
+  var m = String(valWithUnit).match(/^([\d.]+)(公分|台分|台寸|尺|寸|分)$/);
+  return m ? (parseFloat(m[1]) + unitLabel(m[2])) : normUnitsText(valWithUnit);
 }
 function holesSpecText(holes, doorWmm, doorHmm) {
   var computed = calcHolesLayout(holes, doorWmm, doorHmm);
   function cm(mm) { return mm > 0 ? (mm/10).toFixed(1)+'公分' : '?'; }
   // 設定者有手動填的欄位 → 顯示原本單位；系統自動算的 → 公分
   function disp(orig, mm) {
-    var mt = orig ? String(orig).match(/^([\d.]+)(公分|台分|台寸)$/) : null;
-    return mt ? (parseFloat(mt[1])+mt[2]) : cm(mm);
+    var mt = orig ? String(orig).match(/^([\d.]+)(公分|台分|台寸|尺|寸|分)$/) : null;
+    return mt ? (parseFloat(mt[1])+unitLabel(mt[2])) : cm(mm);
   }
   var parts = computed.map(function(c, i) {
     var h = holes[i];
@@ -804,8 +829,8 @@ async function submitAllOrders() {
   }
   const totalQty = orders.reduce(function(s,o){ return s+(parseInt(o.quantity)||0); }, 0);
   const summary = orders.map(function(o){
-    const wu = o.topWUnit==='分'?'台分':'公分';
-    const hu = o.heightUnit==='分'?'台分':'公分';
+    const wu = o.topWUnit==='分'?'尺':'公分';
+    const hu = o.heightUnit==='分'?'尺':'公分';
     return o.modelType+'/'+o.color+' 寬'+o.topW+(o.bottomW?'/'+o.bottomW:'')+wu+' 高'+o.height+hu+' ×'+o.quantity+'片';
   }).join('\n');
   const ok = await showConfirm('確定送出以下 '+orders.length+' 筆訂單（共 '+totalQty+' 片）？\n\n'+summary);
@@ -931,7 +956,7 @@ function downloadOrderImage(orderId) {
     var modelLines = wrap(it.modelType, colX[1]-colX[0]-2*pad, fBody);
     var sizeLines  = wrap(sizeText(it), colX[2]-colX[1]-2*pad, fBody);
     var colorLines = wrap(it.color, colX[4]-colX[3]-2*pad, fBody);
-    var remarkLines= wrap(it.remark, colX[5]-colX[4]-2*pad, fSmall);
+    var remarkLines= wrap(normUnitsText(it.remark), colX[5]-colX[4]-2*pad, fSmall);
     var maxL = Math.max(modelLines.length, sizeLines.length, colorLines.length, remarkLines.length, 1);
     var h = Math.max(baseRowH, maxL*lineH + 2*pad);
     return {it:it, modelLines:modelLines, sizeLines:sizeLines, colorLines:colorLines, remarkLines:remarkLines, h:h};
@@ -1079,7 +1104,7 @@ function showEditModal(orderId) {
   const source = currentRole === 'admin' ? (allAdminOrders||[]) : (allOrders||[]);
   const items = source.filter(function(o){ return o.orderId === orderId; });
   if (!items.length) return;
-  function unitLbl(v) { return parseFloat(v) < 150 ? '公分' : '台分'; }
+  function unitLbl(v) { return parseFloat(v) < 150 ? '公分' : '尺'; }
   function inp(cls, val, type) {
     type = type || 'text';
     return '<input class="'+cls+'" type="'+type+'" value="'+escHtml(String(val||''))+'" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem">';
@@ -1097,7 +1122,7 @@ function showEditModal(orderId) {
         '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">數量</label>'+inp('ei-qty', it.quantity, 'number')+'</div>' +
       '</div>' +
       (it.bottomW ? '<div style="margin-bottom:8px"><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">下寬 ('+unitLbl(it.bottomW)+')</label>'+inp('ei-bottomW', it.bottomW, 'number')+'</div>' : '') +
-      '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">備註</label>'+inp('ei-remark', it.remark)+'</div>' +
+      '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">備註</label>'+inp('ei-remark', normUnitsText(it.remark))+'</div>' +
     '</div>';
   }).join('');
   const overlay = document.createElement('div');
@@ -1255,9 +1280,9 @@ function groupOrders(orders) {
 }
 
 function parseHoleMm(spec, key) {
-  const m = spec.match(new RegExp(key+'([\\d.]+)(公分|台分|台寸)'));
+  const m = spec.match(new RegExp(key+'([\\d.]+)(公分|台分|台寸|尺|寸|分)'));
   if (!m) return 0;
-  return unitToMm(parseFloat(m[1]), m[2].replace('台',''));
+  return unitToMm(parseFloat(m[1]), m[2]);
 }
 function holeRemarkSvg(remark) {
   if (!remark || remark.indexOf('【挖洞】') === -1) return '';
@@ -1280,7 +1305,7 @@ function itemLine(it) {
   const wDisp = it.bottomW
     ? dimDisp(it.topW,150)+' / '+dimDisp(it.bottomW,150)+'（斜邊）'
     : dimDisp(it.topW,150);
-  const remarkText = it.remark ? it.remark.replace(/【挖洞】.*/,'').trim() : '';
+  const remarkText = it.remark ? normUnitsText(it.remark.replace(/【挖洞】.*/,'').trim()) : '';
   const holeSvg = holeRemarkSvg(it.remark||'');
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(it.modelType)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
@@ -1451,10 +1476,10 @@ function applyHolePreset(sid, mapping) {
       if (el) { el.value = ''; delete el.dataset.manual; el.classList.remove('hole-input-auto'); }
       return;
     }
-    const m = valWithUnit.match(/^([\d.]+)(公分|台分|台寸)$/);
+    const m = valWithUnit.match(/^([\d.]+)(公分|台分|台寸|尺|寸|分)$/);
     if (!m) return;
     if (el) { el.value = m[1]; delete el.dataset.manual; el.classList.remove('hole-input-auto'); }
-    if (uEl) uEl.value = m[2].replace('台','');
+    if (uEl) uEl.value = unitValue(m[2]);
   }
   setF('B', mapping.distB); setF('T', mapping.distT);
   setF('L', mapping.distL); setF('R', mapping.distR);
@@ -1465,7 +1490,7 @@ function applyHolePreset(sid, mapping) {
 // ── 型式對照 admin 管理 ──
 function mmUnitSel(id, val) {
   function opt(u) { return '<option'+(val===u?' selected':'')+'>'+u+'</option>'; }
-  return '<select id="'+escHtml(id)+'" onchange="mmUpdateMmPreview()" style="padding:5px 2px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.78rem;color:#2b6cb0;background:#ebf8ff;flex-shrink:0">'+opt('台寸')+opt('公分')+opt('台分')+'</select>';
+  return '<select id="'+escHtml(id)+'" onchange="mmUpdateMmPreview()" style="padding:5px 2px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.78rem;color:#2b6cb0;background:#ebf8ff;flex-shrink:0">'+opt('寸')+opt('公分')+opt('尺')+'</select>';
 }
 function mmHoleFieldHtml(label, idx, key, val, unit) {
   var id = 'mm-h-'+idx+'-'+key;
@@ -1473,7 +1498,7 @@ function mmHoleFieldHtml(label, idx, key, val, unit) {
     '<label style="font-size:.72rem;color:#2b6cb0">'+label+'</label>' +
     '<div style="display:flex;gap:3px">' +
       '<input id="'+escHtml(id)+'" type="number" step="0.1" min="0" placeholder="0" value="'+escHtml(val||'')+'" oninput="mmUpdateMmPreview()" style="flex:1;min-width:0;padding:7px 8px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
-      mmUnitSel(id+'-u', unit||'台寸') +
+      mmUnitSel(id+'-u', unit||'寸') +
     '</div>' +
   '</div>';
 }
@@ -1489,7 +1514,7 @@ function mmRenderHoleForm() {
         '<div style="flex:1;border-top:1px dashed #bee3f8"></div>' +
         '<span style="font-size:.75rem;color:#718096;white-space:nowrap">洞距</span>' +
         '<input id="'+escHtml(gid)+'" type="number" step="0.1" min="0" placeholder="0" value="'+escHtml(h.gap||'')+'" oninput="mmUpdateMmPreview()" style="width:60px;padding:5px 6px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
-        mmUnitSel(gid+'-u', h.gap_u||'台寸') +
+        mmUnitSel(gid+'-u', h.gap_u||'寸') +
         '<div style="flex:1;border-top:1px dashed #bee3f8"></div>' +
       '</div>';
     }
@@ -1505,11 +1530,11 @@ function mmRenderHoleForm() {
     }
     html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">';
     if (i === 0) {
-      if (!h.centerV) html += mmHoleFieldHtml('距高', i, 'distT', h.distT||'', h.distT_u||'台寸');
-      if (!h.centerH) html += mmHoleFieldHtml('距左', i, 'distL', h.distL||'', h.distL_u||'台寸');
+      if (!h.centerV) html += mmHoleFieldHtml('距高', i, 'distT', h.distT||'', h.distT_u||'寸');
+      if (!h.centerH) html += mmHoleFieldHtml('距左', i, 'distL', h.distL||'', h.distL_u||'寸');
     }
-    html += mmHoleFieldHtml('洞寬', i, 'holeW', h.holeW||'', h.holeW_u||'台寸');
-    html += mmHoleFieldHtml('洞高', i, 'holeH', h.holeH||'', h.holeH_u||'台寸');
+    html += mmHoleFieldHtml('洞寬', i, 'holeW', h.holeW||'', h.holeW_u||'寸');
+    html += mmHoleFieldHtml('洞高', i, 'holeH', h.holeH||'', h.holeH_u||'寸');
     html += '</div>';
   }
   wrap.innerHTML = html;
@@ -1546,8 +1571,8 @@ function mmUpdateMmPreview() {
   var box = document.getElementById('mm-hole-preview');
   if (!box) return;
   function gv(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
-  var refW = gv('mm-ref-w'), refWu = gv('mm-ref-w-u')||'台寸';
-  var refH = gv('mm-ref-h'), refHu = gv('mm-ref-h-u')||'台寸';
+  var refW = gv('mm-ref-w'), refWu = gv('mm-ref-w-u')||'寸';
+  var refH = gv('mm-ref-h'), refHu = gv('mm-ref-h-u')||'寸';
   var dW = unitToMm(parseFloat(refW)||0, refWu.replace('台',''));
   var dH = unitToMm(parseFloat(refH)||0, refHu.replace('台',''));
   if (!dW||!dH) { box.innerHTML='<div class="hole-note">填入參考門寬/門高即可預覽</div>'; return; }
@@ -1557,7 +1582,7 @@ function mmUpdateMmPreview() {
 }
 function mmAddHoleRow() {
   mmSaveHoleFormValues();
-  window.mmFormHoles.push({gap:'', gap_u:'台寸', holeW:'', holeW_u:'台寸', holeH:'', holeH_u:'台寸'});
+  window.mmFormHoles.push({gap:'', gap_u:'寸', holeW:'', holeW_u:'寸', holeH:'', holeH_u:'寸'});
   mmRenderHoleForm();
   mmUpdateMmPreview();
 }
@@ -1587,10 +1612,10 @@ function renderModelMap() {
         '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
           '<span style="font-size:.75rem;color:#718096;white-space:nowrap">參考門寬</span>' +
           '<input id="mm-ref-w" type="number" step="0.1" min="0" placeholder="0" oninput="mmUpdateMmPreview()" style="width:70px;padding:6px 8px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
-          mmUnitSel('mm-ref-w-u','台分') +
+          mmUnitSel('mm-ref-w-u','尺') +
           '<span style="font-size:.75rem;color:#718096;white-space:nowrap">門高</span>' +
           '<input id="mm-ref-h" type="number" step="0.1" min="0" placeholder="0" oninput="mmUpdateMmPreview()" style="width:70px;padding:6px 8px;border:1.5px solid #bee3f8;border-radius:5px;font-size:.82rem">' +
-          mmUnitSel('mm-ref-h-u','台分') +
+          mmUnitSel('mm-ref-h-u','尺') +
         '</div>' +
         '<div style="display:flex;gap:12px;align-items:flex-start">' +
           '<div style="flex:1;min-width:0">' +
@@ -1634,7 +1659,7 @@ function mmToggleFormHole(checked) {
   if (!d) return;
   d.style.display = checked ? 'block' : 'none';
   if (checked && window.mmFormHoles.length === 0) {
-    window.mmFormHoles = [{distT:'', distT_u:'台寸', distL:'', distL_u:'台寸', holeW:'', holeW_u:'台寸', holeH:'', holeH_u:'台寸'}];
+    window.mmFormHoles = [{distT:'', distT_u:'寸', distL:'', distL_u:'寸', holeW:'', holeW_u:'寸', holeH:'', holeH_u:'寸'}];
     mmRenderHoleForm();
     mmUpdateMmPreview();
   }
@@ -1643,16 +1668,16 @@ function mmHolesFromForm() {
   mmSaveHoleFormValues();
   return window.mmFormHoles.map(function(h, i) {
     var obj = {
-      holeW: (h.holeW||'')+(h.holeW_u||'台寸'),
-      holeH: (h.holeH||'')+(h.holeH_u||'台寸')
+      holeW: (h.holeW||'')+(h.holeW_u||'寸'),
+      holeH: (h.holeH||'')+(h.holeH_u||'寸')
     };
     if (i===0) {
       obj.centerH = !!h.centerH;
       obj.centerV = !!h.centerV;
-      obj.distT = h.centerV ? '' : (h.distT||'')+(h.distT_u||'台寸');
-      obj.distL = h.centerH ? '' : (h.distL||'')+(h.distL_u||'台寸');
+      obj.distT = h.centerV ? '' : (h.distT||'')+(h.distT_u||'寸');
+      obj.distL = h.centerH ? '' : (h.distL||'')+(h.distL_u||'寸');
     } else {
-      obj.gap = (h.gap||'')+(h.gap_u||'台寸');
+      obj.gap = (h.gap||'')+(h.gap_u||'寸');
     }
     return obj;
   });
@@ -1753,18 +1778,18 @@ function mmEdit(i) {
   if (m.hole && m.holes && m.holes.length) {
     window.mmFormHoles = m.holes.map(function(h, idx) {
       function parseVU(val, defU) {
-        var mt = val ? val.match(/^([\d.]+)(公分|台分|台寸)$/) : null;
-        return mt ? {v: mt[1], u: mt[2]} : {v: '', u: defU||'台寸'};
+        var mt = val ? val.match(/^([\d.]+)(公分|台分|台寸|尺|寸|分)$/) : null;
+        return mt ? {v: mt[1], u: unitLabel(mt[2])} : {v: '', u: defU||'寸'};
       }
       var obj = {};
-      var hw = parseVU(h.holeW,'台寸'), hh = parseVU(h.holeH,'台寸');
+      var hw = parseVU(h.holeW,'寸'), hh = parseVU(h.holeH,'寸');
       obj.holeW=hw.v; obj.holeW_u=hw.u; obj.holeH=hh.v; obj.holeH_u=hh.u;
       if (idx===0) {
         obj.centerH = !!h.centerH; obj.centerV = !!h.centerV;
-        var dt=parseVU(h.distT,'台寸'), dl=parseVU(h.distL,'台寸');
+        var dt=parseVU(h.distT,'寸'), dl=parseVU(h.distL,'寸');
         obj.distT=dt.v; obj.distT_u=dt.u; obj.distL=dl.v; obj.distL_u=dl.u;
       } else {
-        var gp=parseVU(h.gap,'台寸'); obj.gap=gp.v; obj.gap_u=gp.u;
+        var gp=parseVU(h.gap,'寸'); obj.gap=gp.v; obj.gap_u=gp.u;
       }
       return obj;
     });
