@@ -607,26 +607,9 @@ function autoCalcHole(sid) {
   const dW = getDoorMm(sid,'W'), dH = getDoorMm(sid,'H');
   const chEl=document.getElementById('s'+sid+'-holeCH'), cvEl=document.getElementById('s'+sid+'-holeCV');
   const centerH = chEl && chEl.checked, centerV = cvEl && cvEl.checked;
-  if (centerH) {
-    if (dW > 0) { const W=holeValMm(sid,'W'); if (W>0) { const d=(dW-W)/2; forceHole(sid,'L',d); forceHole(sid,'R',d); } }
-  } else if (dW > 0) {
-    const L=holeValMm(sid,'L'),R=holeValMm(sid,'R'),W=holeValMm(sid,'W');
-    const lEl=document.getElementById('s'+sid+'-holeL'),rEl=document.getElementById('s'+sid+'-holeR'),wEl=document.getElementById('s'+sid+'-holeW');
-    const hasL=lEl&&lEl.value!=='',hasR=rEl&&rEl.value!=='',hasW=wEl&&wEl.value!=='';
-    if(hasL&&hasR&&wEl&&!wEl.dataset.manual) setHoleAuto(sid,'W',dW-L-R);
-    else if(hasL&&hasW&&rEl&&!rEl.dataset.manual) setHoleAuto(sid,'R',dW-L-W);
-    else if(hasR&&hasW&&lEl&&!lEl.dataset.manual) setHoleAuto(sid,'L',dW-R-W);
-  }
-  if (centerV) {
-    if (dH > 0) { const H=holeValMm(sid,'H'); if (H>0) { const d=(dH-H)/2; forceHole(sid,'T',d); forceHole(sid,'B',d); } }
-  } else if (dH > 0) {
-    const B=holeValMm(sid,'B'),T=holeValMm(sid,'T'),H=holeValMm(sid,'H');
-    const bEl=document.getElementById('s'+sid+'-holeB'),tEl=document.getElementById('s'+sid+'-holeT'),hEl=document.getElementById('s'+sid+'-holeH');
-    const hasB=bEl&&bEl.value!=='',hasT=tEl&&tEl.value!=='',hasH=hEl&&hEl.value!=='';
-    if(hasB&&hasT&&hEl&&!hEl.dataset.manual) setHoleAuto(sid,'H',dH-B-T);
-    else if(hasB&&hasH&&tEl&&!tEl.dataset.manual) setHoleAuto(sid,'T',dH-B-H);
-    else if(hasT&&hasH&&bEl&&!bEl.dataset.manual) setHoleAuto(sid,'B',dH-T-H);
-  }
+  // 只有「置中」才自動算；其餘距離不自動填（客戶填哪個算哪個）
+  if (centerH && dW > 0) { const W=holeValMm(sid,'W'); if (W>0) { const d=(dW-W)/2; forceHole(sid,'L',d); forceHole(sid,'R',d); } }
+  if (centerV && dH > 0) { const H=holeValMm(sid,'H'); if (H>0) { const d=(dH-H)/2; forceHole(sid,'T',d); forceHole(sid,'B',d); } }
 }
 function forceHole(sid, key, mm) {
   const el = document.getElementById('s'+sid+'-hole'+key);
@@ -759,17 +742,24 @@ function updateHolePreview(sid) {
     return;
   }
   if (doorW<=0||doorH<=0) { box.innerHTML='<div class="hole-note">請先填門板上寬與高度，才能畫示意圖</div>'; return; }
-  const holeW=unitToMm(holeVal(sid,'W'),holeUnit(sid,'W').replace('台',''));
-  const holeH=unitToMm(holeVal(sid,'H'),holeUnit(sid,'H').replace('台',''));
-  const holeL=unitToMm(holeVal(sid,'L')||'0',holeUnit(sid,'L').replace('台',''));
-  const holeB=unitToMm(holeVal(sid,'B')||'0',holeUnit(sid,'B').replace('台',''));
+  const holeW=unitToMm(holeVal(sid,'W'),holeUnit(sid,'W'));
+  const holeH=unitToMm(holeVal(sid,'H'),holeUnit(sid,'H'));
+  // 定位：有距左用距左、否則用距右；有距高用距高、否則用距底（用門板實際尺寸）
+  const lFilled=holeVal(sid,'L')!=='', rFilled=holeVal(sid,'R')!=='';
+  const tFilled=holeVal(sid,'T')!=='', bFilled=holeVal(sid,'B')!=='';
+  const Lmm=unitToMm(holeVal(sid,'L')||'0',holeUnit(sid,'L'));
+  const Rmm=unitToMm(holeVal(sid,'R')||'0',holeUnit(sid,'R'));
+  const Tmm=unitToMm(holeVal(sid,'T')||'0',holeUnit(sid,'T'));
+  const Bmm=unitToMm(holeVal(sid,'B')||'0',holeUnit(sid,'B'));
+  const leftMm = lFilled ? Lmm : (rFilled ? (doorW - Rmm - holeW) : 0);
+  const topMm  = tFilled ? Tmm : (bFilled ? (doorH - Bmm - holeH) : 0);
   const MAX=120; const scale=Math.min(MAX/doorW,MAX*1.5/doorH);
   const dw=Math.round(doorW*scale),dh=Math.round(doorH*scale);
   let inner='';
   if(holeW>0&&holeH>0) {
     const hw=Math.max(1,Math.round(holeW*scale)),hh=Math.max(1,Math.round(holeH*scale));
-    const hl=Math.round(holeL*scale),hb=dh-Math.round(holeB*scale)-hh;
-    inner=`<rect x="${hl}" y="${hb}" width="${hw}" height="${hh}" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>`;
+    const hx=Math.round(leftMm*scale),hy=Math.round(topMm*scale);
+    inner=`<rect x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>`;
   }
   box.innerHTML=`<svg width="${dw}" height="${dh}" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff"><rect width="${dw}" height="${dh}" fill="#ebf8ff"/>${inner}</svg><div class="hole-note" style="margin-top:4px">${(doorW/10).toFixed(1)}×${(doorH/10).toFixed(1)}公分</div>`;
 }
@@ -818,10 +808,19 @@ async function submitAllOrders() {
       if (slant && !bottomW) { showAlert('勾選斜邊但未填下寬'); return; }
       const hole = document.getElementById('s'+sid+'-hole').checked;
       if (hole) {
-        const hw = holeVal(sid,'W'), hh = holeVal(sid,'H');
-        if (!(parseFloat(hw)>0)||!(parseFloat(hh)>0)) { showAlert('挖洞的洞寬與洞高須大於 0'); return; }
-        const spec = holeSpecText(sid);
-        remark = remark ? remark+' '+spec : spec;
+        if (window.lockedHoles[sid]) {
+          const spec = holeSpecText(sid);
+          remark = remark ? remark+' '+spec : spec;
+        } else {
+          const hw = holeVal(sid,'W'), hh = holeVal(sid,'H');
+          if (!(parseFloat(hw)>0)||!(parseFloat(hh)>0)) { showAlert('挖洞的洞寬與洞高須大於 0'); return; }
+          const cH = document.getElementById('s'+sid+'-holeCH'), cV = document.getElementById('s'+sid+'-holeCV');
+          const hasV = (cV&&cV.checked) || holeVal(sid,'T')!=='' || holeVal(sid,'B')!=='';
+          const hasHo = (cH&&cH.checked) || holeVal(sid,'L')!=='' || holeVal(sid,'R')!=='';
+          if (!hasV || !hasHo) { showAlert('挖洞請至少填：距高或距底（擇一）＋ 距左或距右（擇一），洞才能定位'); return; }
+          const spec = holeSpecText(sid);
+          remark = remark ? remark+' '+spec : spec;
+        }
       }
       const resultA9 = computeA9(parseFloat(topW)||0, topWUnit, parseFloat(bottomW)||0, botWUnit) || 0;
       orders.push({ modelType: model, color, topW, topWUnit, bottomW, botWUnit, height, heightUnit, quantity: qty, remark, resultA9 });
@@ -1284,21 +1283,28 @@ function parseHoleMm(spec, key) {
   if (!m) return 0;
   return unitToMm(parseFloat(m[1]), m[2]);
 }
-function holeRemarkSvg(remark) {
+function holeRemarkSvg(remark, doorWmm, doorHmm) {
   if (!remark || remark.indexOf('【挖洞】') === -1) return '';
   const spec = remark.substring(remark.indexOf('【挖洞】'));
   const W = parseHoleMm(spec,'洞寬'), H = parseHoleMm(spec,'洞高');
   if (W<=0||H<=0) return '';
-  const B = parseHoleMm(spec,'距底')||0, T = parseHoleMm(spec,'距高')||0;
-  const L = parseHoleMm(spec,'距左')||0, R = parseHoleMm(spec,'距右')||0;
-  const doorW = (L+W+R)||W, doorH = (B+H+T)||H;
+  const hasT = spec.indexOf('距高')!==-1, hasB = spec.indexOf('距底')!==-1;
+  const hasL = spec.indexOf('距左')!==-1, hasR = spec.indexOf('距右')!==-1;
+  const T = parseHoleMm(spec,'距高'), B = parseHoleMm(spec,'距底');
+  const L = parseHoleMm(spec,'距左'), R = parseHoleMm(spec,'距右');
+  // 門板實際大小（沒帶進來就用距離推算當後備）
+  const doorW = (doorWmm>0 ? doorWmm : ((L+W+R)||W));
+  const doorH = (doorHmm>0 ? doorHmm : ((B+H+T)||H));
+  // 定位：有距左用距左、否則用距右；有距高用距高、否則用距底
+  const leftMm = hasL ? L : (hasR ? (doorW - R - W) : 0);
+  const topMm  = hasT ? T : (hasB ? (doorH - B - H) : 0);
   const MAX=70, scale=Math.min(MAX/doorW,MAX*1.5/doorH);
   const dw=Math.round(doorW*scale), dh=Math.round(doorH*scale);
   const hw=Math.max(1,Math.round(W*scale)), hh=Math.max(1,Math.round(H*scale));
-  const hl=Math.round(L*scale), hb=dh-Math.round(B*scale)-hh;
+  const hx=Math.round(leftMm*scale), hy=Math.round(topMm*scale);
   return '<svg width="'+dw+'" height="'+dh+'" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff;display:block;margin-top:6px">'+
     '<rect width="'+dw+'" height="'+dh+'" fill="#ebf8ff"/>'+
-    '<rect x="'+hl+'" y="'+hb+'" width="'+hw+'" height="'+hh+'" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>'+
+    '<rect x="'+hx+'" y="'+hy+'" width="'+hw+'" height="'+hh+'" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>'+
     '</svg>';
 }
 function itemLine(it) {
@@ -1306,7 +1312,9 @@ function itemLine(it) {
     ? dimDisp(it.topW,150)+' / '+dimDisp(it.bottomW,150)+'（斜邊）'
     : dimDisp(it.topW,150);
   const remarkText = it.remark ? normUnitsText(it.remark.replace(/【挖洞】.*/,'').trim()) : '';
-  const holeSvg = holeRemarkSvg(it.remark||'');
+  const doorWmm = Math.max(unitToMm(it.topW, dimUnit(it.topW,150)), it.bottomW ? unitToMm(it.bottomW, dimUnit(it.bottomW,150)) : 0);
+  const doorHmm = unitToMm(it.height, dimUnit(it.height,200));
+  const holeSvg = holeRemarkSvg(it.remark||'', doorWmm, doorHmm);
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(it.modelType)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,200)+'　× <strong>'+it.quantity+' 片</strong>'+
