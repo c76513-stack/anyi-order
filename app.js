@@ -29,6 +29,7 @@ let _installPrompt = null;
 let groupCounter = 0, sizeCounter = 0;
 let modalResolve = null;
 let _appVersion = null, _versionTimer = null;
+let _updatePending = false, _lastActivity = Date.now();
 
 // ══════════════════════════════════════════════
 //  初始化
@@ -49,12 +50,31 @@ window.addEventListener('load', function () {
   initInstallUI();
 });
 
-// Service Worker 註冊
+// Service Worker 註冊 ＋ 前端新版偵測
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('./sw.js');
+    navigator.serviceWorker.register('./sw.js').then(function (reg) {
+      // 偵測到新版 SW（已有舊版在控制 → 是更新而非初次安裝）
+      reg.addEventListener('updatefound', function () {
+        var nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', function () {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) markUpdateAvailable();
+        });
+      });
+      // 每 3 分鐘叫瀏覽器去檢查有沒有新版 sw.js
+      setInterval(function () { reg.update().catch(function () {}); }, 3 * 60 * 1000);
+    }).catch(function () {});
+    // 初次安裝時 controller 從無到有不算更新；之後換新 SW 才算
+    var hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (hadController) markUpdateAvailable();
+      hadController = true;
+    });
   });
 }
+// 閒置自動更新
+window.addEventListener('load', initIdleReload);
 
 // PWA 安裝提示
 window.addEventListener('beforeinstallprompt', function (e) {
@@ -251,11 +271,46 @@ function startVersionPolling() {
     gasApi('getVersion', {}).then(function(r) {
       if (!r || !r.version) return;
       if (_appVersion && r.version !== _appVersion) {
-        document.getElementById('update-banner').style.display = 'block';
+        markUpdateAvailable();
         clearInterval(_versionTimer);
       }
     }).catch(function(){});
   }, 2 * 60 * 1000);
+}
+
+// ── 閒置時自動套用更新 ───────────────────────────────
+function markUpdateAvailable() {
+  if (_updatePending) return;
+  _updatePending = true;
+  var b = document.getElementById('update-banner');
+  if (b) b.style.display = 'block';
+}
+function _reloadForUpdate() {
+  window.location.href = window.location.href.split('?')[0] + '?_=' + Date.now();
+}
+// 訂單表單有沒有打到一半（避免自動重整洗掉客人的單；數量預設值不算）
+function orderFormHasInput() {
+  var gc = document.getElementById('groups-container');
+  if (!gc) return false;
+  var inputs = gc.querySelectorAll('input[type="text"], input[type="number"]');
+  for (var i = 0; i < inputs.length; i++) {
+    var el = inputs[i];
+    if ((el.id || '').slice(-4) === '-qty') continue;
+    if (el.value && el.value.trim() !== '') return true;
+  }
+  return false;
+}
+function initIdleReload() {
+  ['pointerdown','keydown','touchstart','scroll','mousemove'].forEach(function(ev){
+    window.addEventListener(ev, function(){ _lastActivity = Date.now(); }, { passive: true });
+  });
+  // 每 30 秒檢查：有新版 ＋ 閒置滿 5 分鐘 ＋ 沒打到一半的單 → 自動重整
+  setInterval(function(){
+    if (!_updatePending) return;
+    if (Date.now() - _lastActivity < 5 * 60 * 1000) return;
+    if (orderFormHasInput()) return;
+    _reloadForUpdate();
+  }, 30 * 1000);
 }
 
 function logout() {
