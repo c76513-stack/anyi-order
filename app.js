@@ -381,6 +381,7 @@ function addGroup() {
       '<div class="field"><label>型式 <span class="req">*</span></label><input type="text" id="g'+gid+'-model" placeholder="如 101" list="model-codes-list" oninput="applyModelCode('+gid+',this.value)" onchange="applyModelCode('+gid+',this.value)"></div>' +
       '<div class="field"><label>顏色 <span class="req">*</span></label><input type="text" id="g'+gid+'-color" placeholder="如 P1" list="color-list"></div>' +
     '</div>' +
+    '<div id="g'+gid+'-preset-remark" style="display:none;font-size:.8rem;color:#2b6cb0;background:#ebf8ff;border:1px solid #bee3f8;border-radius:6px;padding:6px 10px;margin-bottom:10px"></div>' +
     '<div class="sizes-container" id="sizes-'+gid+'"></div>' +
     '<button class="btn btn-outline add-size-btn" onclick="addSizeRow('+gid+')">＋ 新增尺寸</button>';
   wrap.appendChild(card);
@@ -471,8 +472,8 @@ function buildHolePanel(sid) {
           '<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:#2b6cb0;cursor:pointer;white-space:nowrap"><input type="checkbox" id="s'+sid+'-holeCV" onchange="toggleHoleCenter('+sid+')"> 上下置中</label>' +
         '</div>' +
         '<div class="hole-dist-row">' +
-          df('T','距高','5',uCun) + df('B','距底','100',uCm) +
-          df('L','距左','5',uCun) + df('R','距右','5',uCun) +
+          df('T','距高','',uCun) + df('B','距底','',uCm) +
+          df('L','距左','',uCun) + df('R','距右','',uCun) +
         '</div>' +
         '<div class="hole-size-row">' + sf('W','洞寬',uPlain) + sf('H','洞高',uPlain) + '</div>' +
       '</div>' +
@@ -607,9 +608,18 @@ function autoCalcHole(sid) {
   const dW = getDoorMm(sid,'W'), dH = getDoorMm(sid,'H');
   const chEl=document.getElementById('s'+sid+'-holeCH'), cvEl=document.getElementById('s'+sid+'-holeCV');
   const centerH = chEl && chEl.checked, centerV = cvEl && cvEl.checked;
-  // 只有「置中」才自動算；其餘距離不自動填（客戶填哪個算哪個）
+  // 置中：自動算距離
   if (centerH && dW > 0) { const W=holeValMm(sid,'W'); if (W>0) { const d=(dW-W)/2; forceHole(sid,'L',d); forceHole(sid,'R',d); } }
   if (centerV && dH > 0) { const H=holeValMm(sid,'H'); if (H>0) { const d=(dH-H)/2; forceHole(sid,'T',d); forceHole(sid,'B',d); } }
+  // 距左+距右都有 → 自動算洞寬；距高+距底都有 → 自動算洞高（距離永遠不自動補）
+  if (!centerH && dW > 0) {
+    const lEl=document.getElementById('s'+sid+'-holeL'),rEl=document.getElementById('s'+sid+'-holeR'),wEl=document.getElementById('s'+sid+'-holeW');
+    if (lEl&&rEl&&wEl&&lEl.value!==''&&rEl.value!==''&&!wEl.dataset.manual) setHoleAuto(sid,'W', dW-holeValMm(sid,'L')-holeValMm(sid,'R'));
+  }
+  if (!centerV && dH > 0) {
+    const tEl=document.getElementById('s'+sid+'-holeT'),bEl=document.getElementById('s'+sid+'-holeB'),hEl=document.getElementById('s'+sid+'-holeH');
+    if (tEl&&bEl&&hEl&&tEl.value!==''&&bEl.value!==''&&!hEl.dataset.manual) setHoleAuto(sid,'H', dH-holeValMm(sid,'T')-holeValMm(sid,'B'));
+  }
 }
 function forceHole(sid, key, mm) {
   const el = document.getElementById('s'+sid+'-hole'+key);
@@ -804,6 +814,9 @@ async function submitAllOrders() {
       const bottomW = slant && botEl ? botEl.value.trim() : '';
       const botWUnit = slant ? getFieldUnit(sid,'bottomW') : '公分';
       let remark = document.getElementById('s'+sid+'-remark').value.trim();
+      // 型式對照的預設備註：自動合併（客戶備註 ＋ 型式預設備註）
+      const presetRemark = (modelEl.dataset.presetRemark || '').trim();
+      if (presetRemark) remark = remark ? (remark + ' ' + presetRemark) : presetRemark;
       if (!topW || !height || !qty) { showAlert('有必填欄位未填'); return; }
       if (slant && !bottomW) { showAlert('勾選斜邊但未填下寬'); return; }
       const hole = document.getElementById('s'+sid+'-hole').checked;
@@ -960,6 +973,10 @@ function downloadOrderImage(orderId) {
     var h = Math.max(baseRowH, maxL*lineH + 2*pad);
     return {it:it, modelLines:modelLines, sizeLines:sizeLines, colorLines:colorLines, remarkLines:remarkLines, h:h};
   });
+  // 不足 9 列補空白列，表格才不會太空
+  while (rows.length < 9) {
+    rows.push({it:null, modelLines:[''], sizeLines:[''], colorLines:[''], remarkLines:[''], h:baseRowH});
+  }
   var tableTop = headerTop + headerH;
   var rowsH = rows.reduce(function(s,r){ return s+r.h; }, 0);
   var tableBottom = tableTop + rowsH;
@@ -1013,7 +1030,7 @@ function downloadOrderImage(orderId) {
     }
     block(r.modelLines, cellMid(0), 'center', y, r.h, lineH, fBody, '#2d3748');
     block(r.sizeLines, cellMid(1), 'center', y, r.h, lineH, fBody, '#2d3748');
-    block([String(r.it.quantity==null?'':r.it.quantity)], cellMid(2), 'center', y, r.h, lineH, fBody, '#2d3748');
+    block([r.it ? String(r.it.quantity==null?'':r.it.quantity) : ''], cellMid(2), 'center', y, r.h, lineH, fBody, '#2d3748');
     block(r.colorLines, cellMid(3), 'center', y, r.h, lineH, fBody, '#2d3748');
     block(r.remarkLines, colX[4]+pad, 'left', y, r.h, lineH, fSmall, '#4a5568');
     y += r.h;
@@ -1311,15 +1328,19 @@ function itemLine(it) {
   const wDisp = it.bottomW
     ? dimDisp(it.topW,150)+' / '+dimDisp(it.bottomW,150)+'（斜邊）'
     : dimDisp(it.topW,150);
-  const remarkText = it.remark ? normUnitsText(it.remark.replace(/【挖洞】.*/,'').trim()) : '';
+  const idx = it.remark ? it.remark.indexOf('【挖洞】') : -1;
+  const noteText = normUnitsText((idx>=0 ? it.remark.substring(0,idx) : (it.remark||'')).trim());
+  const holeText = idx>=0 ? normUnitsText(it.remark.substring(idx).trim()) : '';
   const doorWmm = Math.max(unitToMm(it.topW, dimUnit(it.topW,150)), it.bottomW ? unitToMm(it.bottomW, dimUnit(it.bottomW,150)) : 0);
   const doorHmm = unitToMm(it.height, dimUnit(it.height,200));
   const holeSvg = holeRemarkSvg(it.remark||'', doorWmm, doorHmm);
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(it.modelType)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,200)+'　× <strong>'+it.quantity+' 片</strong>'+
-      (remarkText ? '　<span class="order-remark">備註：'+escHtml(remarkText)+'</span>' : '')+
-    '</div>'+holeSvg+'</div>';
+      (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
+    '</div>'+
+    (holeText ? '<div class="order-remark" style="margin-top:2px;color:#2b6cb0;line-height:1.6">'+escHtml(holeText)+'</div>' : '')+
+    holeSvg+'</div>';
 }
 
 function escHtml(s) {
@@ -1428,17 +1449,31 @@ function mmSetCheckedVendors(vendors) {
 
 function applyModelCode(gid, val) {
   const inp = document.getElementById('g'+gid+'-model');
+  const presetEl = document.getElementById('g'+gid+'-preset-remark');
   const mapping = (window.modelMap||[]).find(function(m){ return m.code === val; });
-  if (!mapping) { if (inp) delete inp.dataset.systemCode; return; }
+  if (!mapping) {
+    if (inp) { delete inp.dataset.systemCode; delete inp.dataset.presetRemark; }
+    if (presetEl) presetEl.style.display = 'none';
+    return;
+  }
   inp.dataset.systemCode = mapping.systemType;
+  // 預設備註：顯示給客戶看（唯讀），送單時自動合併（不塞進客戶備註欄）
+  if (mapping.remark) {
+    inp.dataset.presetRemark = mapping.remark;
+    if (presetEl) { presetEl.textContent = '此型式備註：' + mapping.remark; presetEl.style.display = 'block'; }
+  } else {
+    delete inp.dataset.presetRemark;
+    if (presetEl) presetEl.style.display = 'none';
+  }
+  // 預設顏色：顏色欄空白才帶入
+  if (mapping.color) {
+    const cEl = document.getElementById('g'+gid+'-color');
+    if (cEl && !cEl.value) cEl.value = mapping.color;
+  }
   const container = document.getElementById('sizes-'+gid);
   if (!container) return;
   container.querySelectorAll('.size-row').forEach(function(row) {
     const sid = parseInt(row.id.replace('size-',''));
-    if (mapping.remark) {
-      const rEl = document.getElementById('s'+sid+'-remark');
-      if (rEl && !rEl.value) rEl.value = mapping.remark;
-    }
     if (mapping.hole) {
       const holeChk = document.getElementById('s'+sid+'-hole');
       if (holeChk && !holeChk.checked) { holeChk.checked = true; toggleHole(sid); }
@@ -1616,6 +1651,9 @@ function renderModelMap() {
         '<input id="mm-form-remark" placeholder="自動帶入備註（選填）" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
         '<label style="display:flex;align-items:center;gap:5px;font-size:.85rem;white-space:nowrap;color:#2b6cb0;cursor:pointer"><input type="checkbox" id="mm-form-hole" onchange="mmToggleFormHole(this.checked)"> 挖洞</label>' +
       '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
+        '<input id="mm-form-color" placeholder="自動帶入顏色（選填）" list="color-list" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
+      '</div>' +
       '<div id="mm-form-hole-section" style="display:none">' +
         '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
           '<span style="font-size:.75rem;color:#718096;white-space:nowrap">參考門寬</span>' +
@@ -1651,6 +1689,7 @@ function mmResetForm() {
   document.getElementById('mm-form-code').value='';
   document.getElementById('mm-form-type').value='';
   document.getElementById('mm-form-remark').value='';
+  document.getElementById('mm-form-color').value='';
   document.getElementById('mm-form-hole').checked = false;
   window.mmFormHoles = [];
   window.mmEditIndex = -1;
@@ -1697,7 +1736,7 @@ function mmAddFromForm() {
   const hole = document.getElementById('mm-form-hole').checked;
   function fv(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
   const holes = hole ? mmHolesFromForm() : [];
-  const entry = { code: code, systemType: type, remark: fv('mm-form-remark'), hole: hole, holes: holes, vendors: mmGetCheckedVendors() };
+  const entry = { code: code, systemType: type, remark: fv('mm-form-remark'), color: fv('mm-form-color'), hole: hole, holes: holes, vendors: mmGetCheckedVendors() };
   if (window.mmEditIndex >= 0) { window.modelMap[window.mmEditIndex] = entry; }
   else { window.modelMap.push(entry); }
   renderMmSavedList();
@@ -1724,6 +1763,7 @@ function mmRowHtml(m, i) {
     '<span style="color:#a0aec0;font-size:.8rem">→</span>' +
     '<span style="font-weight:700;color:#2b6cb0;font-size:.9rem">' + escHtml(m.systemType) + '</span>' +
     (m.remark ? '<span style="flex:1;color:#718096;font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(m.remark) + '</span>' : '<span style="flex:1"></span>') +
+    (m.color ? '<span style="font-size:.72rem;color:#805ad5;background:#faf5ff;padding:2px 6px;border-radius:4px;white-space:nowrap">'+escHtml(m.color)+'</span>' : '') +
     holeTag +
     '<button onclick="mmEdit(' + i + ')" style="background:transparent;border:1px solid #3182ce;color:#3182ce;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✎</button>' +
     '<button onclick="mmDel(' + i + ')" style="background:transparent;border:1px solid #e53e3e;color:#e53e3e;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✕</button>' +
@@ -1779,6 +1819,7 @@ function mmEdit(i) {
   setEl('mm-form-code', m.code);
   setEl('mm-form-type', m.systemType);
   setEl('mm-form-remark', m.remark || '');
+  setEl('mm-form-color', m.color || '');
   mmSetCheckedVendors(m.vendors || []);
   const holeChk = document.getElementById('mm-form-hole');
   if (holeChk) holeChk.checked = !!m.hole;
