@@ -408,7 +408,7 @@ function initGroups() {
   // 預填上次型式
   gasApi('getLastOrder', authData()).then(function(last) {
     if (!last) return;
-    const g = document.querySelector('.group-card');
+    const g = document.querySelector('#groups-container .group-card');
     if (!g) return;
     const gid = g.id.replace('group-','');
     const m = document.getElementById('g'+gid+'-model');
@@ -848,7 +848,7 @@ function updateCutoffNotice() {
 //  送出訂單
 // ══════════════════════════════════════════════
 async function submitAllOrders() {
-  const groups = document.querySelectorAll('.group-card');
+  const groups = document.querySelectorAll('#groups-container .group-card');
   if (!groups.length) { showAlert('請先新增訂單'); return; }
   const orders = [];
   for (const g of groups) {
