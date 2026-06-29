@@ -419,6 +419,9 @@ function initGroups() {
 }
 
 function nextOrder() {
+  document.getElementById('groups-container').style.display = '';
+  document.querySelectorAll('#order-section .content > .btn-outline, #order-section .content > .btn-green')
+    .forEach(function(el){ el.style.display = ''; });
   initGroups();
   document.getElementById('success-card').style.display = 'none';
 }
@@ -908,6 +911,9 @@ async function submitAllOrders() {
     const res = await gasApi('saveOrders', { ...authData(), orders });
     loading(false);
     if (!res.success) { showAlert('送出失敗：'+(res.error||'未知錯誤')); return; }
+    document.getElementById('groups-container').style.display = 'none';
+    document.querySelectorAll('#order-section .content > .btn-outline, #order-section .content > .btn-green')
+      .forEach(function(el){ el.style.display = 'none'; });
     document.getElementById('success-title').textContent = '訂單已送出！（編號：' + res.orderId + '）';
     document.getElementById('success-card').style.display = 'block';
     window.scrollTo(0, 0);
