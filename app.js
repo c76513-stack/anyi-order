@@ -967,7 +967,7 @@ function renderOrders() {
   if (!filtered.length) { summaryEl.style.display='none'; noDataEl.style.display='block'; listEl.innerHTML=''; return; }
   noDataEl.style.display='none'; summaryEl.style.display='flex';
   document.getElementById('summary-total').textContent = filtered.reduce(function(s,o){return s+o.quantity;},0);
-  const groups = sortGroupsPendingFirst(groupOrders(filtered.slice().reverse()));
+  const groups = sortGroupsPendingFirst(groupOrders(filtered).reverse());
   listEl.innerHTML = groups.map(function(g,i){
     const t = g.time.length>=16 ? g.time.substring(11,16) : '';
     const allConfirmed = g.items.every(function(it){ return it.status==='已確認'; });
@@ -1156,7 +1156,7 @@ function renderAdminOrders() {
   if (!filtered.length) { summaryEl.style.display='none'; noDataEl.style.display='block'; listEl.innerHTML=''; return; }
   noDataEl.style.display='none'; summaryEl.style.display='flex';
   document.getElementById('admin-summary-total').textContent = filtered.reduce(function(s,o){return s+o.quantity;},0);
-  const groups = sortGroupsPendingFirst(groupOrders(filtered.slice().reverse()));
+  const groups = sortGroupsPendingFirst(groupOrders(filtered).reverse());
   listEl.innerHTML = groups.map(function(g,i){
     const t = g.time.length>=16 ? g.time.substring(11,16) : '';
     const allConfirmed = g.items.every(function(it){ return it.status==='已確認'; });
