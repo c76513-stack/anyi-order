@@ -1394,11 +1394,11 @@ function itemLine(it) {
   const noteText = normUnitsText((idx>=0 ? it.remark.substring(0,idx) : (it.remark||'')).trim());
   const holeText = idx>=0 ? normUnitsText(it.remark.substring(idx).trim()) : '';
   const doorWmm = Math.max(unitToMm(it.topW, dimUnit(it.topW,150)), it.bottomW ? unitToMm(it.bottomW, dimUnit(it.bottomW,150)) : 0);
-  const doorHmm = unitToMm(it.height, dimUnit(it.height,200));
+  const doorHmm = unitToMm(it.height, dimUnit(it.height,400));
   const holeSvg = holeRemarkSvg(it.remark||'', doorWmm, doorHmm);
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(it.modelType)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
-    '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,200)+'　× <strong>'+it.quantity+' 片</strong>'+
+    '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,400)+'　× <strong>'+it.quantity+' 片</strong>'+
       (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
     '</div>'+
     (holeText ? '<div class="order-remark" style="margin-top:2px;color:#2b6cb0;line-height:1.6">'+escHtml(holeText)+'</div>' : '')+
