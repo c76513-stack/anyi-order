@@ -30,6 +30,7 @@ let groupCounter = 0, sizeCounter = 0;
 let modalResolve = null;
 let _appVersion = null, _versionTimer = null;
 let _updatePending = false, _lastActivity = Date.now();
+let _hbTimer = null, _accountsTimer = null;
 
 // ══════════════════════════════════════════════
 //  初始化
@@ -208,9 +209,10 @@ function showTab(name) {
     const tab = document.getElementById('tab-' + t);
     if (tab) tab.classList.toggle('tab-active', t === name);
   });
+  if (_accountsTimer) { clearInterval(_accountsTimer); _accountsTimer = null; }
   if (name === 'query' && !allOrders) loadOrders();
   if (name === 'admin' && !allAdminOrders) loadAllOrders();
-  if (name === 'accounts') loadAccounts();
+  if (name === 'accounts') { loadAccounts(); _accountsTimer = setInterval(function(){ loadAccounts(true); }, 20000); }
   if (name === 'modelmap') renderModelMap();
 }
 
@@ -257,6 +259,7 @@ async function login() {
     document.getElementById('admin-date').value = today;
     allOrders = null; allAdminOrders = null;
     startVersionPolling();
+    startHeartbeat();
     initGroups();
   } catch (e) {
     loading(false);
@@ -317,6 +320,8 @@ function logout() {
   currentUser = ''; currentPass = ''; currentCustomer = ''; currentRole = '';
   allOrders = null; allAdminOrders = null;
   if (_versionTimer) { clearInterval(_versionTimer); _versionTimer = null; }
+  if (_hbTimer) { clearInterval(_hbTimer); _hbTimer = null; }
+  if (_accountsTimer) { clearInterval(_accountsTimer); _accountsTimer = null; }
   _appVersion = null;
   document.getElementById('update-banner').style.display = 'none';
   document.getElementById('form-section').style.display = 'none';
@@ -858,6 +863,7 @@ async function submitAllOrders() {
     const gid = g.id.replace('group-', '');
     const modelEl = document.getElementById('g'+gid+'-model');
     const model = (modelEl.dataset.systemCode || modelEl.value).trim();
+    const customerCode = (modelEl.value || '').trim();
     const color = document.getElementById('g'+gid+'-color').value.trim();
     if (!model || !color) { showAlert('請填寫型式與顏色'); return; }
     const rows = g.querySelectorAll('.size-row');
@@ -895,7 +901,7 @@ async function submitAllOrders() {
         }
       }
       const resultA9 = computeA9(parseFloat(topW)||0, topWUnit, parseFloat(bottomW)||0, botWUnit) || 0;
-      orders.push({ modelType: model, color, topW, topWUnit, bottomW, botWUnit, height, heightUnit, quantity: qty, remark, resultA9 });
+      orders.push({ modelType: model, customerCode, color, topW, topWUnit, bottomW, botWUnit, height, heightUnit, quantity: qty, remark, resultA9 });
     }
   }
   const totalQty = orders.reduce(function(s,o){ return s+(parseInt(o.quantity)||0); }, 0);
@@ -1294,18 +1300,40 @@ async function exportDailyReport() {
 // ══════════════════════════════════════════════
 //  帳號管理
 // ══════════════════════════════════════════════
-async function loadAccounts() {
-  loading(true);
+function lastSeenText(ms) {
+  var s = Math.floor(ms/1000);
+  if (s < 60)  return s + ' 秒前';
+  var m = Math.floor(s/60);
+  if (m < 60)  return m + ' 分前';
+  var h = Math.floor(m/60);
+  if (h < 24)  return h + ' 小時前';
+  return Math.floor(h/24) + ' 天前';
+}
+function presenceHtml(a) {
+  var ms = a.lastSeen;
+  if (ms == null || ms < 0) return '<span style="font-size:.72rem;color:#a0aec0;white-space:nowrap"><span style="color:#cbd5e0">●</span> 未上線</span>';
+  var online = ms < 90000;
+  return '<span style="font-size:.72rem;white-space:nowrap;color:'+(online?'#276749':'#a0aec0')+'">'+
+    '<span style="color:'+(online?'#38a169':'#cbd5e0')+'">●</span> '+(online ? '在線' : lastSeenText(ms))+'</span>';
+}
+function startHeartbeat() {
+  if (_hbTimer) clearInterval(_hbTimer);
+  function ping() { if (currentUser) gasApi('heartbeat', authData()).catch(function(){}); }
+  ping();
+  _hbTimer = setInterval(ping, 45000);
+}
+async function loadAccounts(silent) {
+  if (!silent) loading(true);
   try {
     const list = await gasApi('getAllAccounts', authData());
-    loading(false);
+    if (!silent) loading(false);
     const el = document.getElementById('accounts-list');
     if (!list.length) { el.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:20px">目前無帳號資料</p>'; return; }
     el.innerHTML = list.map(function(a){
       const disabled = a.status==='停用';
       return '<div class="account-item'+(disabled?' account-disabled':'')+'">'+
         '<div class="account-info">'+
-          '<div class="account-name">'+escHtml(a.customerName)+'</div>'+
+          '<div class="account-name">'+escHtml(a.customerName)+'　'+presenceHtml(a)+'</div>'+
           '<div class="account-meta">帳號：'+escHtml(a.username)+'　統編：'+escHtml(a.taxId)+'　狀態：'+a.status+'</div>'+
         '</div>'+
         '<div class="account-btns">'+
@@ -1316,7 +1344,7 @@ async function loadAccounts() {
         '</div>'+
       '</div>';
     }).join('');
-  } catch(e) { loading(false); showAlert('查詢失敗'); }
+  } catch(e) { if (!silent) { loading(false); showAlert('查詢失敗'); } }
 }
 
 async function doResetPwd(rowIndex) {
@@ -1396,8 +1424,10 @@ function itemLine(it) {
   const doorWmm = Math.max(unitToMm(it.topW, dimUnit(it.topW,150)), it.bottomW ? unitToMm(it.bottomW, dimUnit(it.bottomW,150)) : 0);
   const doorHmm = unitToMm(it.height, dimUnit(it.height,400));
   const holeSvg = holeRemarkSvg(it.remark||'', doorWmm, doorHmm);
+  const modelDisp = (it.customerCode && it.customerCode !== it.modelType)
+    ? it.customerCode + ' → ' + it.modelType : it.modelType;
   return '<div class="suborder">'+
-    '<div class="order-detail"><span class="tag">'+escHtml(it.modelType)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
+    '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,400)+'　× <strong>'+it.quantity+' 片</strong>'+
       (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
     '</div>'+
