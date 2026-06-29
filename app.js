@@ -406,7 +406,11 @@ async function doChangePassword() {
 // ══════════════════════════════════════════════
 function initGroups() {
   groupCounter = 0; sizeCounter = 0;
-  document.getElementById('groups-container').innerHTML = '';
+  const gc = document.getElementById('groups-container');
+  gc.style.display = '';                       // 還原顯示（送單成功後曾被隱藏）
+  gc.innerHTML = '';
+  document.querySelectorAll('#order-section .content > .btn-outline, #order-section .content > .btn-green')
+    .forEach(function(el){ el.style.display = ''; });
   document.getElementById('success-card').style.display = 'none';
   updateCutoffNotice();
   addGroup();
