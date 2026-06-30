@@ -8,12 +8,30 @@ window.lockedHoles = {};
 window.mmEditIndex = -1;
 window.mmAccounts = [];
 
+// 只有「讀取／不改資料」的動作才會自動重試；送單/儲存等會改資料的絕不重試（避免重複）
+const RETRY_SAFE = { login:1, getVersion:1, getMyOrders:1, getAllOrders:1, getModelMap:1, getColorList:1, getLastOrder:1, getAllAccounts:1, heartbeat:1 };
 async function gasApi(action, data) {
   // 用 POST 送，資料放 body（text/plain → 不觸發 CORS 預檢），避開 GET 網址長度限制
   const body = JSON.stringify(Object.assign({ action }, data || {}));
-  const resp = await fetch(GAS_URL, { method: 'POST', body: body, redirect: 'follow' });
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  return resp.json();
+  const safe = !!RETRY_SAFE[action];
+  const maxTries = safe ? 3 : 1;
+  let lastErr;
+  for (let i = 0; i < maxTries; i++) {
+    let ctrl, to;
+    const opts = { method: 'POST', body: body, redirect: 'follow' };
+    if (safe) { ctrl = new AbortController(); opts.signal = ctrl.signal; to = setTimeout(function(){ ctrl.abort(); }, 25000); }
+    try {
+      const resp = await fetch(GAS_URL, opts);
+      if (to) clearTimeout(to);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      return await resp.json();
+    } catch (e) {
+      if (to) clearTimeout(to);
+      lastErr = e;
+      if (i < maxTries - 1) await new Promise(function(r){ setTimeout(r, 700 * (i + 1)); });
+    }
+  }
+  throw lastErr;
 }
 
 function authData() {
@@ -251,6 +269,8 @@ async function login() {
       document.getElementById('tab-admin').style.display = 'flex';
       document.getElementById('tab-accounts').style.display = 'flex';
       document.getElementById('tab-modelmap').style.display = 'flex';
+      document.getElementById('proxy-customer-wrap').style.display = 'block';
+      loadProxyCustomers();
     }
     loadModelMap();
     loadColorList();
@@ -328,6 +348,7 @@ function logout() {
   document.getElementById('tab-admin').style.display = 'none';
   document.getElementById('tab-accounts').style.display = 'none';
   document.getElementById('tab-modelmap').style.display = 'none';
+  document.getElementById('proxy-customer-wrap').style.display = 'none';
   window.modelMap = []; window.colorList = []; window.lockedHoles = {}; window.mmFormHoles = []; window.mmEditIndex = -1; window.mmAccounts = [];
   showLoginSection();
 }
@@ -862,6 +883,14 @@ function updateCutoffNotice() {
 async function submitAllOrders() {
   const groups = document.querySelectorAll('#groups-container .group-card');
   if (!groups.length) { showAlert('請先新增訂單'); return; }
+  // 管理員代下單：這批記在所選客戶名下
+  let orderCustomer = currentCustomer, placedBy = '';
+  if (currentRole === 'admin') {
+    const sel = document.getElementById('proxy-customer');
+    orderCustomer = sel ? sel.value.trim() : '';
+    if (!orderCustomer) { showAlert('請先在最上方選擇「代下單客戶」'); return; }
+    placedBy = currentUser;
+  }
   const orders = [];
   for (const g of groups) {
     const gid = g.id.replace('group-', '');
@@ -905,7 +934,7 @@ async function submitAllOrders() {
         }
       }
       const resultA9 = computeA9(parseFloat(topW)||0, topWUnit, parseFloat(bottomW)||0, botWUnit) || 0;
-      orders.push({ modelType: model, customerCode, color, topW, topWUnit, bottomW, botWUnit, height, heightUnit, quantity: qty, remark, resultA9 });
+      orders.push({ modelType: model, customerCode, color, topW, topWUnit, bottomW, botWUnit, height, heightUnit, quantity: qty, remark, resultA9, customerName: orderCustomer, placedBy: placedBy });
     }
   }
   const totalQty = orders.reduce(function(s,o){ return s+(parseInt(o.quantity)||0); }, 0);
@@ -1326,6 +1355,19 @@ function startHeartbeat() {
   ping();
   _hbTimer = setInterval(ping, 45000);
 }
+async function loadProxyCustomers() {
+  try {
+    const list = await gasApi('getAllAccounts', authData());
+    var names = [];
+    (list||[]).forEach(function(a){ if (a.customerName && a.customerName !== currentCustomer && names.indexOf(a.customerName) === -1) names.push(a.customerName); });
+    names.sort(function(a,b){ return mmCodeCmp(a,b); });
+    var sel = document.getElementById('proxy-customer');
+    if (!sel) return;
+    var keep = sel.value;
+    sel.innerHTML = '<option value="">— 請選擇客戶 —</option>' +
+      names.map(function(n){ return '<option value="'+escHtml(n)+'"'+(n===keep?' selected':'')+'>'+escHtml(n)+'</option>'; }).join('');
+  } catch(e) {}
+}
 async function loadAccounts(silent) {
   if (!silent) loading(true);
   try {
@@ -1430,8 +1472,9 @@ function itemLine(it) {
   const holeSvg = holeRemarkSvg(it.remark||'', doorWmm, doorHmm);
   const modelDisp = (it.customerCode && it.customerCode !== it.modelType)
     ? it.customerCode + ' → ' + it.modelType : it.modelType;
+  const proxyTag = it.placedBy ? '<span class="tag" style="background:#fefcbf;color:#744210">代下單</span>' : '';
   return '<div class="suborder">'+
-    '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
+    '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span>'+proxyTag+'</div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,400)+'　× <strong>'+it.quantity+' 片</strong>'+
       (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
     '</div>'+

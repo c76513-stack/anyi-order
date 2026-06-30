@@ -76,7 +76,7 @@
 <div id="form-section" style="display:none">
   <div class="top-bar">
     <span class="customer-name">安奕木業　👤 <span id="name-display"></span></span>
-    <span style="display:flex;align-items:center;gap:10px"><span style="font-size:.7rem;color:rgba(255,255,255,.55)">v22</span><button class="btn-logout" onclick="logout()">登出</button></span>
+    <span style="display:flex;align-items:center;gap:10px"><span style="font-size:.7rem;color:rgba(255,255,255,.55)">v24</span><button class="btn-logout" onclick="logout()">登出</button></span>
   </div>
   <div class="tabs">
     <button class="tab tab-active" id="tab-order" onclick="showTab('order')">📝 新增訂單</button>
@@ -90,6 +90,11 @@
   <!-- 新增訂單 -->
   <div id="order-section">
     <div class="content">
+      <div id="proxy-customer-wrap" style="display:none;background:#fffbea;border:1.5px solid #f6e05e;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <label style="display:block;font-size:.82rem;font-weight:700;color:#744210;margin-bottom:6px">👤 代下單客戶 <span class="req">*</span></label>
+        <select id="proxy-customer" style="width:100%;padding:10px 12px;border:1.5px solid #f6e05e;border-radius:8px;font-size:.95rem;color:#2d3748;background:#fff"><option value="">— 請選擇客戶 —</option></select>
+        <div style="font-size:.75rem;color:#a0aec0;margin-top:5px">這批訂單會記在所選客戶名下，並標記「代下單」</div>
+      </div>
       <div id="groups-container"></div>
       <button class="btn btn-outline" onclick="addGroup()" style="margin-bottom:10px">＋ 新增型式／顏色</button>
       <div id="cutoff-notice"></div>

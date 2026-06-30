@@ -1,4 +1,4 @@
-const CACHE = 'anyi-v22';
+const CACHE = 'anyi-v24';
 
 self.addEventListener('install', e => { self.skipWaiting(); });
 
