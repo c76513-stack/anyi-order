@@ -471,6 +471,7 @@ function addGroup() {
       '<div class="field"><label>顏色 <span class="req">*</span></label><input type="text" id="g'+gid+'-color" placeholder="如 P1" list="color-list"></div>' +
     '</div>' +
     '<div id="g'+gid+'-preset-remark" style="display:none;font-size:.8rem;color:#2b6cb0;background:#ebf8ff;border:1px solid #bee3f8;border-radius:6px;padding:6px 10px;margin-bottom:10px"></div>' +
+    '<div id="g'+gid+'-doorface" style="display:none;margin-bottom:10px"></div>' +
     '<div class="sizes-container" id="sizes-'+gid+'"></div>' +
     '<button class="btn btn-outline add-size-btn" onclick="addSizeRow('+gid+')">＋ 新增尺寸</button>';
   wrap.appendChild(card);
@@ -775,6 +776,66 @@ function calcHolesLayout(holes, doorWmm, doorHmm) {
   }
   return result;
 }
+// ── 門型示意圖（系統畫線，非照片，無版權問題）──────────
+var DOOR_FACES = {
+  '3v':   { name:'三直線',   lines:[[0.14,0.06,0.14,0.94],[0.20,0.06,0.20,0.94],[0.26,0.06,0.26,0.94]] },
+  '1v':   { name:'左直線',   lines:[[0.14,0.06,0.14,0.94]] },
+  '6h':   { name:'6+2',      lines:[[0.15,0.05,0.15,0.95],[0.85,0.05,0.85,0.95],[0.15,0.20,0.85,0.20],[0.15,0.35,0.85,0.35],[0.15,0.50,0.85,0.50],[0.15,0.65,0.85,0.65],[0.15,0.80,0.85,0.80]] },
+  '2h':   { name:'3+2',      lines:[[0.17,0.05,0.17,0.95],[0.83,0.05,0.83,0.95],[0.17,0.44,0.83,0.44],[0.17,0.50,0.83,0.50],[0.17,0.56,0.83,0.56]] },
+  'cv':   { name:'中央直板', lines:[[0.17,0.05,0.17,0.95],[0.83,0.05,0.83,0.95]] },
+  'S12':  { name:'S12',      lines:[[0.06,0.12,0.94,0.12],[0.06,0.155,0.94,0.155],[0.06,0.27,0.94,0.27],[0.06,0.305,0.94,0.305],[0.06,0.42,0.94,0.42],[0.06,0.455,0.94,0.455],[0.06,0.57,0.94,0.57],[0.06,0.605,0.94,0.605],[0.06,0.72,0.94,0.72],[0.06,0.755,0.94,0.755],[0.06,0.87,0.94,0.87],[0.06,0.905,0.94,0.905]] },
+  '103':  { name:'103',      rects:[[0.12,0.10,0.88,0.90],[0.20,0.55,0.80,0.86]], arches:[[0.20,0.15,0.80,0.48,0.18]] },
+  '101':  { name:'101',      rects:[[0.17,0.55,0.83,0.90]], arches:[[0.17,0.11,0.83,0.48,0.18]] },
+  '5+1':  { name:'5+1',      lines:[[0.15,0.05,0.15,0.95],[0.15,0.16,0.94,0.16],[0.15,0.33,0.94,0.33],[0.15,0.50,0.94,0.50],[0.15,0.67,0.94,0.67],[0.15,0.84,0.94,0.84]] },
+  '4+2':  { name:'4+2',      lines:[[0.17,0.05,0.17,0.95],[0.83,0.05,0.83,0.95],[0.17,0.10,0.83,0.10],[0.17,0.51,0.83,0.51],[0.17,0.59,0.83,0.59],[0.17,0.90,0.83,0.90]] },
+  '5h':   { name:'5橫',      lines:[[0.06,0.18,0.94,0.18],[0.06,0.36,0.94,0.36],[0.06,0.54,0.94,0.54],[0.06,0.72,0.94,0.72],[0.06,0.90,0.94,0.90]] }
+};
+function doorFaceName(code){ return (DOOR_FACES[code]||{}).name || ''; }
+function doorFaceOptions(sel){
+  var o = '<option value="">無</option>';
+  for (var k in DOOR_FACES) o += '<option value="'+k+'"'+(sel===k?' selected':'')+'>'+DOOR_FACES[k].name+'</option>';
+  return o;
+}
+function doorFaceSVG(code, hPx){
+  var d = DOOR_FACES[code]; if (!d) return '';
+  var h = hPx||140, w = Math.round(h*0.42);
+  var sw = Math.max(2.5, w*0.05);
+  var body = '';
+  (d.lines||[]).forEach(function(L){
+    body += '<line x1="'+(L[0]*w).toFixed(1)+'" y1="'+(L[1]*h).toFixed(1)+'" x2="'+(L[2]*w).toFixed(1)+'" y2="'+(L[3]*h).toFixed(1)+'" stroke="#2b6cb0" stroke-width="'+sw.toFixed(1)+'" stroke-linecap="round"/>';
+  });
+  (d.rects||[]).forEach(function(R){
+    body += '<rect x="'+(R[0]*w).toFixed(1)+'" y="'+(R[1]*h).toFixed(1)+'" width="'+((R[2]-R[0])*w).toFixed(1)+'" height="'+((R[3]-R[1])*h).toFixed(1)+'" rx="2" fill="none" stroke="#2b6cb0" stroke-width="'+sw.toFixed(1)+'"/>';
+  });
+  (d.arches||[]).forEach(function(A){
+    var x1=A[0]*w,y1=A[1]*h,x2=A[2]*w,y2=A[3]*h,asY=y1+(A[4]||0.22)*(y2-y1),mx=(x1+x2)/2,cy=2*y1-asY;
+    body += '<path d="M '+x1.toFixed(1)+' '+y2.toFixed(1)+' L '+x2.toFixed(1)+' '+y2.toFixed(1)+' L '+x2.toFixed(1)+' '+asY.toFixed(1)+' Q '+mx.toFixed(1)+' '+cy.toFixed(1)+' '+x1.toFixed(1)+' '+asY.toFixed(1)+' Z" fill="none" stroke="#2b6cb0" stroke-width="'+sw.toFixed(1)+'"/>';
+  });
+  return '<svg width="'+w+'" height="'+h+'" style="display:block;border:1.5px solid #2b6cb0;border-radius:4px;background:#f7fafc">'+body+'</svg>';
+}
+function doorFaceCanvas(ctx, code, cx, topY, hPx){
+  var d = DOOR_FACES[code]; if (!d) return 0;
+  var h = hPx, w = Math.round(h*0.42), x = Math.round(cx - w/2), y = topY;
+  ctx.fillStyle='#f7fafc'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='#2b6cb0'; ctx.lineWidth=1.5; ctx.strokeRect(x,y,w,h);
+  ctx.strokeStyle='#2b6cb0'; ctx.lineWidth=Math.max(2.5, w*0.05); ctx.lineCap='round';
+  (d.lines||[]).forEach(function(L){ ctx.beginPath(); ctx.moveTo(x+L[0]*w, y+L[1]*h); ctx.lineTo(x+L[2]*w, y+L[3]*h); ctx.stroke(); });
+  (d.rects||[]).forEach(function(R){ ctx.strokeRect(x+R[0]*w, y+R[1]*h, (R[2]-R[0])*w, (R[3]-R[1])*h); });
+  (d.arches||[]).forEach(function(A){
+    var x1=x+A[0]*w,y1=y+A[1]*h,x2=x+A[2]*w,y2=y+A[3]*h,asY=y1+(A[4]||0.22)*(y2-y1),mx=(x1+x2)/2,cy=2*y1-asY;
+    ctx.beginPath(); ctx.moveTo(x1,y2); ctx.lineTo(x2,y2); ctx.lineTo(x2,asY); ctx.quadraticCurveTo(mx,cy,x1,asY); ctx.closePath(); ctx.stroke();
+  });
+  return h;
+}
+function orderDoorFace(it){
+  var e = (window.modelMap||[]).find(function(m){ return m.code === it.customerCode; });
+  return e && e.doorFace ? e.doorFace : '';
+}
+function mmUpdateDoorFacePreview() {
+  var sel = document.getElementById('mm-form-doorface');
+  var box = document.getElementById('mm-doorface-preview');
+  if (box) box.innerHTML = (sel && sel.value) ? doorFaceSVG(sel.value, 90) : '';
+}
 function drawHolesSVG(doorWmm, doorHmm, computed, maxW, maxH) {
   maxW = maxW||120; maxH = maxH||200;
   if (!doorWmm||!doorHmm||!computed.length) return '';
@@ -888,7 +949,7 @@ async function submitAllOrders() {
   if (currentRole === 'admin') {
     const sel = document.getElementById('proxy-customer');
     orderCustomer = sel ? sel.value.trim() : '';
-    if (!orderCustomer) { showAlert('請先在最上方選擇「代下單客戶」'); return; }
+    if (!orderCustomer) { showAlert('請先在最上方選擇或輸入「代下單客戶」'); return; }
     placedBy = currentUser;
   }
   const orders = [];
@@ -1071,8 +1132,9 @@ function downloadOrderImage(orderId) {
     var colorLines = wrap(it.color, colX[4]-colX[3]-2*pad, fBody);
     var remarkLines= wrap(normUnitsText(it.remark), colX[5]-colX[4]-2*pad, fSmall);
     var maxL = Math.max(modelLines.length, sizeLines.length, colorLines.length, remarkLines.length, 1);
-    var h = Math.max(baseRowH, maxL*lineH + 2*pad);
-    return {it:it, modelLines:modelLines, sizeLines:sizeLines, colorLines:colorLines, remarkLines:remarkLines, h:h};
+    var df = it ? orderDoorFace(it) : '';
+    var h = Math.max(baseRowH, maxL*lineH + 2*pad, df ? (modelLines.length*lineH + 60 + 3*pad) : 0);
+    return {it:it, df:df, modelLines:modelLines, sizeLines:sizeLines, colorLines:colorLines, remarkLines:remarkLines, h:h};
   });
   // 不足 9 列補空白列，表格才不會太空
   while (rows.length < 9) {
@@ -1129,7 +1191,13 @@ function downloadOrderImage(orderId) {
       ctx.strokeStyle='#cbd5e0'; ctx.lineWidth=1;
       ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(780, y); ctx.stroke();
     }
-    block(r.modelLines, cellMid(0), 'center', y, r.h, lineH, fBody, '#2d3748');
+    if (r.df) {
+      var mh = r.modelLines.length*lineH;
+      block(r.modelLines, cellMid(0), 'center', y + pad, mh, lineH, fBody, '#2d3748');
+      doorFaceCanvas(ctx, r.df, cellMid(0), y + pad + mh + 4, 56);
+    } else {
+      block(r.modelLines, cellMid(0), 'center', y, r.h, lineH, fBody, '#2d3748');
+    }
     block(r.sizeLines, cellMid(1), 'center', y, r.h, lineH, fBody, '#2d3748');
     block([r.it ? String(r.it.quantity==null?'':r.it.quantity) : ''], cellMid(2), 'center', y, r.h, lineH, fBody, '#2d3748');
     block(r.colorLines, cellMid(3), 'center', y, r.h, lineH, fBody, '#2d3748');
@@ -1361,11 +1429,9 @@ async function loadProxyCustomers() {
     var names = [];
     (list||[]).forEach(function(a){ if (a.customerName && a.customerName !== currentCustomer && names.indexOf(a.customerName) === -1) names.push(a.customerName); });
     names.sort(function(a,b){ return mmCodeCmp(a,b); });
-    var sel = document.getElementById('proxy-customer');
-    if (!sel) return;
-    var keep = sel.value;
-    sel.innerHTML = '<option value="">— 請選擇客戶 —</option>' +
-      names.map(function(n){ return '<option value="'+escHtml(n)+'"'+(n===keep?' selected':'')+'>'+escHtml(n)+'</option>'; }).join('');
+    var dl = document.getElementById('proxy-customer-list');
+    if (!dl) return;
+    dl.innerHTML = names.map(function(n){ return '<option value="'+escHtml(n)+'"></option>'; }).join('');
   } catch(e) {}
 }
 async function loadAccounts(silent) {
@@ -1473,13 +1539,15 @@ function itemLine(it) {
   const modelDisp = (it.customerCode && it.customerCode !== it.modelType)
     ? it.customerCode + ' → ' + it.modelType : it.modelType;
   const proxyTag = it.placedBy ? '<span class="tag" style="background:#fefcbf;color:#744210">代下單</span>' : '';
+  const dfCode = orderDoorFace(it);
+  const dfSvg = dfCode ? '<div style="margin-top:6px">'+doorFaceSVG(dfCode, 72)+'</div>' : '';
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span>'+proxyTag+'</div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,400)+'　× <strong>'+it.quantity+' 片</strong>'+
       (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
     '</div>'+
     (holeText ? '<div class="order-remark" style="margin-top:2px;color:#2b6cb0;line-height:1.6">'+escHtml(holeText)+'</div>' : '')+
-    holeSvg+'</div>';
+    dfSvg+holeSvg+'</div>';
 }
 
 function escHtml(s) {
@@ -1589,13 +1657,21 @@ function mmSetCheckedVendors(vendors) {
 function applyModelCode(gid, val) {
   const inp = document.getElementById('g'+gid+'-model');
   const presetEl = document.getElementById('g'+gid+'-preset-remark');
+  const dfEl = document.getElementById('g'+gid+'-doorface');
   const mapping = (window.modelMap||[]).find(function(m){ return m.code === val; });
   if (!mapping) {
     if (inp) { delete inp.dataset.systemCode; delete inp.dataset.presetRemark; }
     if (presetEl) presetEl.style.display = 'none';
+    if (dfEl) { dfEl.style.display = 'none'; dfEl.innerHTML = ''; }
     return;
   }
   inp.dataset.systemCode = mapping.systemType;
+  if (dfEl) {
+    if (mapping.doorFace && DOOR_FACES[mapping.doorFace]) {
+      dfEl.innerHTML = doorFaceSVG(mapping.doorFace, 120);
+      dfEl.style.display = 'block';
+    } else { dfEl.style.display = 'none'; dfEl.innerHTML = ''; }
+  }
   // 預設備註：顯示給客戶看（唯讀），送單時自動合併（不塞進客戶備註欄）
   if (mapping.remark) {
     inp.dataset.presetRemark = mapping.remark;
@@ -1792,6 +1868,13 @@ function renderModelMap() {
       '</div>' +
       '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
         '<input id="mm-form-color" placeholder="自動帶入顏色（選填）" list="color-list" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
+        '<span style="color:#a0aec0;flex-shrink:0">＋</span>' +
+        '<input id="mm-form-color2" placeholder="第二顏色（選填）" list="color-list" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
+        '<span style="font-size:.85rem;color:#2b6cb0;white-space:nowrap">門型示意</span>' +
+        '<select id="mm-form-doorface" onchange="mmUpdateDoorFacePreview()" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">'+doorFaceOptions('')+'</select>' +
+        '<div id="mm-doorface-preview" style="flex-shrink:0"></div>' +
       '</div>' +
       '<div id="mm-form-hole-section" style="display:none">' +
         '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
@@ -1829,6 +1912,8 @@ function mmResetForm() {
   document.getElementById('mm-form-type').value='';
   document.getElementById('mm-form-remark').value='';
   document.getElementById('mm-form-color').value='';
+  document.getElementById('mm-form-color2').value='';
+  document.getElementById('mm-form-doorface').value=''; mmUpdateDoorFacePreview();
   document.getElementById('mm-form-hole').checked = false;
   window.mmFormHoles = [];
   window.mmEditIndex = -1;
@@ -1875,7 +1960,9 @@ function mmAddFromForm() {
   const hole = document.getElementById('mm-form-hole').checked;
   function fv(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
   const holes = hole ? mmHolesFromForm() : [];
-  const entry = { code: code, systemType: type, remark: fv('mm-form-remark'), color: fv('mm-form-color'), hole: hole, holes: holes, vendors: mmGetCheckedVendors() };
+  const c1 = fv('mm-form-color'), c2 = fv('mm-form-color2');
+  const color = (c1 && c2) ? (c1 + '／' + c2) : (c1 || c2);
+  const entry = { code: code, systemType: type, remark: fv('mm-form-remark'), color: color, doorFace: fv('mm-form-doorface'), hole: hole, holes: holes, vendors: mmGetCheckedVendors() };
   if (window.mmEditIndex >= 0) { window.modelMap[window.mmEditIndex] = entry; }
   else { window.modelMap.push(entry); }
   renderMmSavedList();
@@ -1903,6 +1990,7 @@ function mmRowHtml(m, i) {
     '<span style="font-weight:700;color:#2b6cb0;font-size:.9rem">' + escHtml(m.systemType) + '</span>' +
     (m.remark ? '<span style="flex:1;color:#718096;font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(m.remark) + '</span>' : '<span style="flex:1"></span>') +
     (m.color ? '<span style="font-size:.72rem;color:#805ad5;background:#faf5ff;padding:2px 6px;border-radius:4px;white-space:nowrap">'+escHtml(m.color)+'</span>' : '') +
+    (m.doorFace ? '<span style="font-size:.72rem;color:#744210;background:#fffbea;padding:2px 6px;border-radius:4px;white-space:nowrap">門型:'+escHtml(doorFaceName(m.doorFace))+'</span>' : '') +
     holeTag +
     '<button onclick="mmEdit(' + i + ')" style="background:transparent;border:1px solid #3182ce;color:#3182ce;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✎</button>' +
     '<button onclick="mmDel(' + i + ')" style="background:transparent;border:1px solid #e53e3e;color:#e53e3e;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✕</button>' +
@@ -1958,7 +2046,10 @@ function mmEdit(i) {
   setEl('mm-form-code', m.code);
   setEl('mm-form-type', m.systemType);
   setEl('mm-form-remark', m.remark || '');
-  setEl('mm-form-color', m.color || '');
+  var _colorParts = String(m.color || '').split('／');
+  setEl('mm-form-color', _colorParts[0] || '');
+  setEl('mm-form-color2', _colorParts[1] || '');
+  setEl('mm-form-doorface', m.doorFace || ''); mmUpdateDoorFacePreview();
   mmSetCheckedVendors(m.vendors || []);
   const holeChk = document.getElementById('mm-form-hole');
   if (holeChk) holeChk.checked = !!m.hole;
