@@ -507,6 +507,12 @@ function addSizeRow(gid) {
       '<label class="size-slant"><input type="checkbox" id="s'+sid+'-hole" onchange="toggleHole('+sid+')"> 挖洞</label>' +
       '<button class="btn-remove-size" onclick="removeSizeRow('+sid+')">✕</button>' +
     '</div>' +
+    '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin-top:8px;padding-left:2px">' +
+      '<span style="font-size:.78rem;font-weight:700;color:#718096">加工</span>' +
+      '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-bridge"> 橋洞板</label>' +
+      '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-reinforce"> 上下補強</label>' +
+      '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-strip"> 下降壓條</label>' +
+    '</div>' +
     '<div class="size-field size-field-grow" style="margin-top:6px;max-width:100%"><label>備註</label>' +
       '<input type="text" id="s'+sid+'-remark" placeholder=""></div>' +
     buildHolePanel(sid);
@@ -643,12 +649,12 @@ function dimDisp(v, threshold) {
 }
 
 // ── 角材計算 ──
-function computeA9(t, tUnit, b, bUnit) {
+function computeA9(t, tUnit, b, bUnit, sub) {
   const tFen = tUnit === '分' ? t : t * 3.3;
   const bFen = b > 0 ? (bUnit === '分' ? b : b * 3.3) : 0;
   let w = Math.max(tFen, bFen);
   if (w <= 0) return null;
-  w = w - 23;
+  w = w - (sub || 23);
   const i = Math.floor(w), d = w - i;
   return d < 0.3 ? i : d < 0.8 ? i + 0.5 : i + 1;
 }
@@ -994,7 +1000,12 @@ async function submitAllOrders() {
           remark = remark ? remark+' '+spec : spec;
         }
       }
-      const resultA9 = computeA9(parseFloat(topW)||0, topWUnit, parseFloat(bottomW)||0, botWUnit) || 0;
+      // 加工勾選項 → 併入備註（標準字串，避免打錯字）
+      if (document.getElementById('s'+sid+'-bridge').checked && remark.indexOf('橋洞板') === -1) remark = remark ? remark + ' 橋洞板' : '橋洞板';
+      if (document.getElementById('s'+sid+'-reinforce').checked && remark.indexOf('上下補強') === -1) remark = remark ? remark + ' 上下補強' : '上下補強';
+      if (document.getElementById('s'+sid+'-strip').checked && remark.indexOf('下降壓條') === -1) remark = remark ? remark + ' 下降壓條' : '下降壓條';
+      const a9sub = remark.indexOf('橋洞板') !== -1 ? 22 : 23;
+      const resultA9 = computeA9(parseFloat(topW)||0, topWUnit, parseFloat(bottomW)||0, botWUnit, a9sub) || 0;
       orders.push({ modelType: model, customerCode, color, topW, topWUnit, bottomW, botWUnit, height, heightUnit, quantity: qty, remark, resultA9, customerName: orderCustomer, placedBy: placedBy });
     }
   }
