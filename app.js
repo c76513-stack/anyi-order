@@ -366,12 +366,45 @@ function _checkNewOrders() {
 }
 
 function showOrderNotification(text) {
+  showInPageAlert(text);                 // 頁面內橫幅：不管作業系統權限/專注輔助，一定看得到
+  // 作業系統桌面通知（加分，有授權才會）
   try {
-    if (window.Notification && Notification.permission === 'granted') {
-      var n = new Notification('每日門扇', { body: text, tag: 'anyi-neworder', renotify: true });
-      n.onclick = function () { window.focus(); try { showTab('admin'); } catch (e) {} n.close(); };
+    if (!window.Notification) return;
+    if (Notification.permission === 'granted') {
+      try {
+        var n = new Notification('每日門扇', { body: text, tag: 'anyi-neworder', renotify: true });
+        n.onclick = function () { window.focus(); try { showTab('admin'); } catch (e) {} n.close(); };
+      } catch (e) {
+        // 已安裝的 PWA 不准用 new Notification → 改走 service worker
+        if (navigator.serviceWorker) {
+          navigator.serviceWorker.ready.then(function (reg) {
+            reg.showNotification('每日門扇', { body: text, tag: 'anyi-neworder', renotify: true });
+          }).catch(function () {});
+        }
+      }
+    } else if (Notification.permission === 'default') {
+      Notification.requestPermission();  // 還沒決定就再問一次
     }
   } catch (e) {}
+}
+
+// 頁面內紅色橫幅通知：程式動態產生，不受作業系統權限/專注輔助影響
+function showInPageAlert(text) {
+  var el = document.getElementById('neworder-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'neworder-toast';
+    el.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100000;'
+      + 'background:#c0392b;color:#fff;padding:14px 22px;border-radius:10px;'
+      + 'box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:1rem;font-weight:700;'
+      + 'cursor:pointer;max-width:92%;text-align:center;line-height:1.5';
+    el.onclick = function () { el.style.display = 'none'; try { showTab('admin'); } catch (e) {} };
+    document.body.appendChild(el);
+  }
+  el.textContent = '🔔 ' + text + '（點此查看）';
+  el.style.display = 'block';
+  if (el._t) clearTimeout(el._t);
+  el._t = setTimeout(function () { el.style.display = 'none'; }, 15000);
 }
 
 // 用 Web Audio 合成一段刺耳的警報「尖叫」聲（不需音檔）
