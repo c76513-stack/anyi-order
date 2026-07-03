@@ -1256,7 +1256,7 @@ function renderAdminOrders() {
   const dateVal = document.getElementById('admin-date').value;
   const selectEl = document.getElementById('admin-search');
   const idQuery = (document.getElementById('admin-orderid').value||'').trim().toUpperCase();
-  const byDate = filterOrdersByDate(allAdminOrders||[], dateVal);
+  const byDate = filterOrdersByDate(allAdminOrders||[], dateVal).filter(function(o){ return String(o.status)!=='待料'; });
   const prev = selectEl.value;
   const names = [];
   byDate.forEach(function(o){ if(names.indexOf(o.customerName)===-1) names.push(o.customerName); });
