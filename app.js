@@ -9,7 +9,7 @@ window.mmEditIndex = -1;
 window.mmAccounts = [];
 
 // 只有「讀取／不改資料」的動作才會自動重試；送單/儲存等會改資料的絕不重試（避免重複）
-const RETRY_SAFE = { login:1, getVersion:1, getMyOrders:1, getAllOrders:1, getModelMap:1, getColorList:1, getLastOrder:1, getAllAccounts:1, heartbeat:1 };
+const RETRY_SAFE = { login:1, getVersion:1, getMyOrders:1, getAllOrders:1, getModelMap:1, getColorList:1, getTypeColors:1, getLastOrder:1, getAllAccounts:1, heartbeat:1 };
 async function gasApi(action, data) {
   // 用 POST 送，資料放 body（text/plain → 不觸發 CORS 預檢），避開 GET 網址長度限制
   const body = JSON.stringify(Object.assign({ action }, data || {}));
@@ -50,6 +50,7 @@ let modalResolve = null;
 let _appVersion = null, _versionTimer = null;
 let _updatePending = false, _lastActivity = Date.now();
 let _hbTimer = null, _accountsTimer = null;
+let _notifyTimer = null, _seenOrderIds = null, _audioCtx = null;
 
 // ══════════════════════════════════════════════
 //  初始化
@@ -275,12 +276,14 @@ async function login() {
     }
     loadModelMap();
     loadColorList();
+    loadTypeColors();
     const today = new Date().toISOString().slice(0, 10);
     document.getElementById('query-date').value = today;
     document.getElementById('admin-date').value = today;
     allOrders = null; allAdminOrders = null;
     startVersionPolling();
     startHeartbeat();
+    startNewOrderWatch();
     initGroups();
   } catch (e) {
     loading(false);
@@ -300,6 +303,94 @@ function startVersionPolling() {
       }
     }).catch(function(){});
   }, 2 * 60 * 1000);
+}
+
+// ══════════════════════════════════════════════
+//  新單通知（管理員）— 桌面通知 + 尖叫警報聲
+// ══════════════════════════════════════════════
+function startNewOrderWatch() {
+  if (currentRole !== 'admin') return;
+  stopNewOrderWatch();
+  // 趁登入手勢還在，要一次通知權限、並開好音訊環境（之後定時播才不會被瀏覽器擋）
+  try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (AC && !_audioCtx) _audioCtx = new AC();
+    if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch (e) {}
+  // 第一次先把現有訂單全記成「已看過」，不對舊單亂叫；_seenOrderIds 還沒好之前不比對
+  _seenOrderIds = null;
+  gasApi('getAllOrders', authData()).then(function (orders) {
+    _seenOrderIds = {};
+    (orders || []).forEach(function (o) { if (o.orderId) _seenOrderIds[o.orderId] = 1; });
+  }).catch(function () { _seenOrderIds = {}; });
+  _notifyTimer = setInterval(_checkNewOrders, 30 * 1000);
+}
+
+function stopNewOrderWatch() {
+  if (_notifyTimer) { clearInterval(_notifyTimer); _notifyTimer = null; }
+  _seenOrderIds = null;
+}
+
+function _checkNewOrders() {
+  if (currentRole !== 'admin' || _seenOrderIds === null) return;
+  gasApi('getAllOrders', authData()).then(function (orders) {
+    if (!orders) return;
+    // 把沒看過的 orderId 收集起來，同一張單（同 orderId）合計片數
+    var fresh = {};
+    orders.forEach(function (o) {
+      var id = o.orderId; if (!id || _seenOrderIds[id]) return;
+      if (!fresh[id]) fresh[id] = { name: o.customerName || '', qty: 0 };
+      fresh[id].qty += (Number(o.quantity) || 0);
+    });
+    var ids = Object.keys(fresh);
+    if (!ids.length) return;
+    ids.forEach(function (id) { _seenOrderIds[id] = 1; });
+    playScream();
+    if (ids.length === 1) {
+      var f = fresh[ids[0]];
+      showOrderNotification('🔔 新單：' + f.name + ' ' + f.qty + ' 片');
+    } else {
+      var total = ids.reduce(function (s, id) { return s + fresh[id].qty; }, 0);
+      showOrderNotification('🔔 有 ' + ids.length + ' 張新單，共 ' + total + ' 片');
+    }
+  }).catch(function () {});
+}
+
+function showOrderNotification(text) {
+  try {
+    if (window.Notification && Notification.permission === 'granted') {
+      var n = new Notification('每日門扇', { body: text, tag: 'anyi-neworder', renotify: true });
+      n.onclick = function () { window.focus(); try { showTab('admin'); } catch (e) {} n.close(); };
+    }
+  } catch (e) {}
+}
+
+// 用 Web Audio 合成一段刺耳的警報「尖叫」聲（不需音檔）
+function playScream() {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!_audioCtx) _audioCtx = new AC();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+    var ctx = _audioCtx, t0 = ctx.currentTime;
+    for (var k = 0; k < 3; k++) {          // 三段快速上下掃頻，像尖叫/警笛
+      var s = t0 + k * 0.5;
+      var osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(700, s);
+      osc.frequency.exponentialRampToValueAtTime(1800, s + 0.18);
+      osc.frequency.exponentialRampToValueAtTime(600, s + 0.42);
+      var lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+      lfo.frequency.value = 30; lfoGain.gain.value = 120;   // 快速抖動更像尖叫
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      gain.gain.setValueAtTime(0.0001, s);
+      gain.gain.exponentialRampToValueAtTime(0.6, s + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, s + 0.45);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(s); lfo.start(s); osc.stop(s + 0.46); lfo.stop(s + 0.46);
+    }
+  } catch (e) {}
 }
 
 // ── 閒置時自動套用更新 ───────────────────────────────
@@ -343,6 +434,7 @@ function logout() {
   if (_versionTimer) { clearInterval(_versionTimer); _versionTimer = null; }
   if (_hbTimer) { clearInterval(_hbTimer); _hbTimer = null; }
   if (_accountsTimer) { clearInterval(_accountsTimer); _accountsTimer = null; }
+  stopNewOrderWatch();
   _appVersion = null;
   document.getElementById('update-banner').style.display = 'none';
   document.getElementById('form-section').style.display = 'none';
@@ -443,8 +535,8 @@ function initGroups() {
     if (!g) return;
     const gid = g.id.replace('group-','');
     const m = document.getElementById('g'+gid+'-model');
+    if (m && last.modelType) { m.value = last.modelType; applyColorRestriction(gid, last.modelType); }
     const c = document.getElementById('g'+gid+'-color');
-    if (m && last.modelType) m.value = last.modelType;
     if (c && last.color) c.value = last.color;
   }).catch(function(){});
 }
@@ -469,7 +561,7 @@ function addGroup() {
     '</div>' +
     '<div class="row-2">' +
       '<div class="field"><label>型式 <span class="req">*</span></label><input type="text" id="g'+gid+'-model" placeholder="如 101" list="model-codes-list" oninput="applyModelCode('+gid+',this.value)" onchange="applyModelCode('+gid+',this.value)"></div>' +
-      '<div class="field"><label>顏色 <span class="req">*</span></label><input type="text" id="g'+gid+'-color" placeholder="如 P1" list="color-list"></div>' +
+      '<div class="field"><label>顏色 <span class="req">*</span></label><div id="g'+gid+'-color-wrap"><input type="text" id="g'+gid+'-color" placeholder="如 P1" list="color-list"></div></div>' +
     '</div>' +
     '<div id="g'+gid+'-preset-remark" style="display:none;font-size:.8rem;color:#2b6cb0;background:#ebf8ff;border:1px solid #bee3f8;border-radius:6px;padding:6px 10px;margin-bottom:10px"></div>' +
     '<div id="g'+gid+'-doorface" style="display:none;margin-bottom:10px"></div>' +
@@ -1379,6 +1471,19 @@ function showEditModal(orderId) {
   const items = source.filter(function(o){ return o.orderId === orderId; });
   if (!items.length) return;
   function unitLbl(v) { return parseFloat(v) < 150 ? '公分' : '尺'; }
+  function eiColorControl(it) {
+    const tc = (window.typeColorMap||[]).find(function(t){ return t.systemType === it.modelType; });
+    const colors = (tc && tc.colors && tc.colors.length) ? tc.colors : null;
+    if (colors) {
+      const cur = String(it.color||'');
+      const keep = colors.indexOf(cur) >= 0 ? cur : '';
+      return '<select class="ei-color" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem">' +
+        '<option value="">請選擇顏色</option>' +
+        colors.map(function(c){ return '<option value="'+escHtml(c)+'"'+(c===keep?' selected':'')+'>'+escHtml(c)+'</option>'; }).join('') +
+      '</select>';
+    }
+    return '<input class="ei-color" value="'+escHtml(String(it.color||''))+'" list="color-list" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem">';
+  }
   function inp(cls, val, type) {
     type = type || 'text';
     return '<input class="'+cls+'" type="'+type+'" value="'+escHtml(String(val||''))+'" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem">';
@@ -1388,7 +1493,7 @@ function showEditModal(orderId) {
       (items.length > 1 ? '<div style="font-size:.78rem;font-weight:700;color:#a0aec0;margin-bottom:8px">第 '+(idx+1)+' 項</div>' : '') +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">' +
         '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">型式</label>'+inp('ei-model', it.modelType)+'</div>' +
-        '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">顏色</label><input class="ei-color" value="'+escHtml(String(it.color||''))+'" list="color-list" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem"></div>' +
+        '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">顏色</label>'+eiColorControl(it)+'</div>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr 72px;gap:8px;margin-bottom:8px">' +
         '<div><label style="font-size:.75rem;font-weight:700;color:#718096;display:block;margin-bottom:3px">上寬 ('+unitLbl(it.topW)+')</label>'+inp('ei-topW', it.topW, 'number')+'</div>' +
@@ -1743,11 +1848,42 @@ function mmSetCheckedVendors(vendors) {
   document.querySelectorAll('#mm-form-vendors input[type=checkbox]').forEach(function(c){ c.checked = !!set[c.value]; });
 }
 
+// 依型式解出系統型式，若「型式顏色」有設限制 → 顏色欄換成純下拉；否則還原自由輸入
+function typeColorsFor(modelVal) {
+  const mapping = (window.modelMap||[]).find(function(m){ return m.code === modelVal; });
+  const sysType = mapping ? mapping.systemType : modelVal;
+  const tc = (window.typeColorMap||[]).find(function(t){ return t.systemType === sysType; });
+  return (tc && tc.colors && tc.colors.length) ? tc.colors : null;
+}
+function applyColorRestriction(gid, modelVal) {
+  const wrap = document.getElementById('g'+gid+'-color-wrap');
+  if (!wrap) return;
+  const colors = typeColorsFor(modelVal);
+  const el = document.getElementById('g'+gid+'-color');
+  const cur = el ? el.value : '';
+  if (colors) {
+    const sig = colors.join(',');
+    if (el && el.tagName === 'SELECT' && wrap.dataset.colorSig === sig) return; // 已是相同下拉，免重建
+    const keep = colors.indexOf(cur) >= 0 ? cur : '';
+    wrap.innerHTML = '<select id="g'+gid+'-color">' +
+      '<option value="">請選擇顏色</option>' +
+      colors.map(function(c){ return '<option value="'+escHtml(c)+'"'+(c===keep?' selected':'')+'>'+escHtml(c)+'</option>'; }).join('') +
+    '</select>';
+    wrap.dataset.colorSig = sig;
+  } else {
+    if (el && el.tagName === 'INPUT') { delete wrap.dataset.colorSig; return; } // 已是輸入框，免重建
+    wrap.innerHTML = '<input type="text" id="g'+gid+'-color" placeholder="如 P1" list="color-list" value="'+escHtml(cur)+'">';
+    delete wrap.dataset.colorSig;
+  }
+}
+
 function applyModelCode(gid, val) {
   const inp = document.getElementById('g'+gid+'-model');
   const presetEl = document.getElementById('g'+gid+'-preset-remark');
   const dfEl = document.getElementById('g'+gid+'-doorface');
   const mapping = (window.modelMap||[]).find(function(m){ return m.code === val; });
+  // 依系統型式套用顏色限制（限制成純下拉）
+  applyColorRestriction(gid, val);
   if (!mapping) {
     if (inp) { delete inp.dataset.systemCode; delete inp.dataset.presetRemark; }
     if (presetEl) presetEl.style.display = 'none';
@@ -2194,6 +2330,7 @@ async function loadColorList() {
     const dl = document.getElementById('color-list');
     if (dl) dl.innerHTML = window.colorList.map(function(c){ return '<option value="'+escHtml(c)+'">'; }).join('');
     renderColorList();
+    if (typeof renderTypeColors === 'function') renderTypeColors();  // 顏色清單變動 → 勾選框同步
   } catch(e) {}
 }
 function renderColorList() {
@@ -2243,5 +2380,95 @@ async function doSaveColorList() {
       showAlert('儲存成功！');
       loadColorList();
     } else showAlert('儲存失敗：'+(res.error||''));
+  } catch(e) { loading(false); showAlert('連線失敗'); }
+}
+
+// ══ 型式顏色限制 ══
+window.typeColorMap = [];
+window.tcEditIndex = -1;
+async function loadTypeColors() {
+  try {
+    const res = await gasApi('getTypeColors', authData());
+    window.typeColorMap = Array.isArray(res) ? res : [];
+    renderTypeColors();
+  } catch(e) {}
+}
+function tcColorChecks(selected) {
+  selected = selected || [];
+  var opts = (window.colorList||[]).slice();
+  selected.forEach(function(c){ if (opts.indexOf(c) < 0) opts.push(c); }); // 含清單外的舊資料
+  if (!opts.length) return '<span style="font-size:.82rem;color:#a0aec0">請先到「顏色清單管理」新增顏色</span>';
+  return opts.map(function(c){
+    var on = selected.indexOf(c) >= 0;
+    return '<label style="display:flex;align-items:center;gap:5px;font-size:.85rem;color:#4a5568;cursor:pointer;white-space:nowrap">'+
+      '<input type="checkbox" class="tc-form-color" value="'+escHtml(c)+'"'+(on?' checked':'')+' style="width:16px;height:16px;accent-color:#3182ce;cursor:pointer">'+escHtml(c)+'</label>';
+  }).join('');
+}
+function renderTypeColors() {
+  const list = document.getElementById('typecolor-list');
+  if (!list) return;
+  const editing = window.tcEditIndex >= 0 ? window.typeColorMap[window.tcEditIndex] : null;
+  list.innerHTML =
+    '<div style="border:1.5px solid #bee3f8;border-radius:8px;padding:12px;background:#ebf8ff;margin-bottom:14px">' +
+      '<div style="font-size:.8rem;font-weight:700;color:#2b6cb0;margin-bottom:8px">'+(editing?'修改限制':'新增限制')+'</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">' +
+        '<span style="font-size:.85rem;color:#2b6cb0;white-space:nowrap">系統型式</span>' +
+        '<input id="tc-form-type" placeholder="如 101" value="'+escHtml(editing?editing.systemType:'')+'" style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #bee3f8;border-radius:7px;font-size:.88rem">' +
+      '</div>' +
+      '<div style="font-size:.78rem;color:#2b6cb0;font-weight:700;margin:6px 0 5px">允許顏色（勾選）</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;padding:7px 8px;border:1.5px solid #bee3f8;border-radius:6px;background:#fff">'+tcColorChecks(editing?editing.colors:[])+'</div>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button onclick="tcAddFromForm()" style="padding:7px 18px;background:#2b6cb0;color:#fff;border:none;border-radius:7px;font-size:.88rem;font-weight:700;cursor:pointer">'+(editing?'✓ 更新':'＋ 加入清單')+'</button>' +
+        (editing?'<button onclick="tcCancelEdit()" style="padding:7px 18px;background:transparent;border:1.5px solid #a0aec0;color:#718096;border-radius:7px;font-size:.88rem;font-weight:700;cursor:pointer">取消</button>':'') +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:.8rem;font-weight:700;color:#4a5568;margin-bottom:6px">已設定的型式</div>' +
+    '<div id="tc-saved-list"></div>';
+  renderTcSavedList();
+}
+function renderTcSavedList() {
+  const el = document.getElementById('tc-saved-list');
+  if (!el) return;
+  if (!window.typeColorMap.length) {
+    el.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:12px 0;font-size:.85rem">尚無設定</p>';
+    return;
+  }
+  el.innerHTML = window.typeColorMap.map(function(t, i) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;margin-bottom:6px">' +
+      '<span style="font-weight:700;color:#2b6cb0;font-size:.9rem;white-space:nowrap">' + escHtml(t.systemType) + '</span>' +
+      '<span style="color:#a0aec0;font-size:.8rem">→</span>' +
+      '<span style="flex:1;color:#4a5568;font-size:.85rem">' + escHtml((t.colors||[]).join('、')) + '</span>' +
+      '<button onclick="tcEdit(' + i + ')" style="background:transparent;border:1px solid #3182ce;color:#3182ce;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✎</button>' +
+      '<button onclick="tcDel(' + i + ')" style="background:transparent;border:1px solid #e53e3e;color:#e53e3e;border-radius:5px;padding:3px 8px;font-size:.78rem;cursor:pointer;flex-shrink:0">✕</button>' +
+    '</div>';
+  }).join('');
+}
+function tcAddFromForm() {
+  const type = (document.getElementById('tc-form-type').value || '').trim();
+  if (!type) { showAlert('請填寫系統型式'); return; }
+  const colors = [];
+  document.querySelectorAll('.tc-form-color:checked').forEach(function(c){ colors.push(c.value); });
+  if (!colors.length) { showAlert('請至少勾選一個顏色'); return; }
+  const entry = { systemType: type, colors: colors };
+  if (window.tcEditIndex >= 0) {
+    window.typeColorMap[window.tcEditIndex] = entry;
+  } else {
+    const dup = window.typeColorMap.findIndex(function(t){ return t.systemType === type; });
+    if (dup >= 0) window.typeColorMap[dup] = entry;   // 同型式覆蓋，不重複
+    else window.typeColorMap.push(entry);
+  }
+  window.tcEditIndex = -1;
+  renderTypeColors();
+}
+function tcEdit(i) { window.tcEditIndex = i; renderTypeColors(); }
+function tcCancelEdit() { window.tcEditIndex = -1; renderTypeColors(); }
+function tcDel(i) { window.typeColorMap.splice(i, 1); if (window.tcEditIndex === i) window.tcEditIndex = -1; renderTypeColors(); }
+async function doSaveTypeColors() {
+  loading(true);
+  try {
+    const res = await gasApi('saveTypeColors', Object.assign(authData(), { rows: window.typeColorMap }));
+    loading(false);
+    if (res.success) { showAlert('儲存成功！'); loadTypeColors(); }
+    else showAlert('儲存失敗：'+(res.error||''));
   } catch(e) { loading(false); showAlert('連線失敗'); }
 }
