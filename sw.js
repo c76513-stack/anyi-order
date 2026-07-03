@@ -1,4 +1,4 @@
-const CACHE = 'anyi-v50';
+const CACHE = 'anyi-v51';
 
 self.addEventListener('install', e => { self.skipWaiting(); });
 
@@ -10,7 +10,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.url.includes('script.google.com')) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'reload' })   // 一律跳過 HTTP 快取抓最新，部署後即時生效
       .then(function(r) {
         const clone = r.clone();
         caches.open(CACHE).then(function(c) { c.put(e.request, clone); });
