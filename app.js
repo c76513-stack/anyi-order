@@ -43,6 +43,7 @@ function authData() {
 // ══════════════════════════════════════════════
 let currentUser = '', currentPass = '', currentCustomer = '', currentRole = '';
 let allOrders = null, allAdminOrders = null;
+let adminPendingView = false;
 let _installPrompt = null;
 let groupCounter = 0, sizeCounter = 0;
 let modalResolve = null;
@@ -1081,7 +1082,10 @@ function renderOrders() {
   listEl.innerHTML = groups.map(function(g,i){
     const t = g.time.length>=16 ? g.time.substring(11,16) : '';
     const allConfirmed = g.items.every(function(it){ return it.status==='已確認'; });
-    const badge = allConfirmed
+    const isPending = g.items.some(function(it){ return it.status==='待料'; });
+    const badge = isPending
+      ? '<span class="status-badge badge-waiting">待料</span>'
+      : allConfirmed
       ? '<span class="status-badge badge-confirmed">已確認</span>'
       : '<span class="status-badge badge-pending">待確認</span>';
     const idTag = g.orderId ? '<span style="font-size:.75rem;color:#718096;margin-left:6px">'+escHtml(g.orderId)+'</span>' : '';
@@ -1248,6 +1252,7 @@ async function loadAllOrders() {
 function refreshAdminOrders() { allAdminOrders = null; loadAllOrders(); }
 
 function renderAdminOrders() {
+  if (adminPendingView) { renderPendingOrders(); return; }
   const dateVal = document.getElementById('admin-date').value;
   const selectEl = document.getElementById('admin-search');
   const idQuery = (document.getElementById('admin-orderid').value||'').trim().toUpperCase();
@@ -1276,23 +1281,97 @@ function renderAdminOrders() {
   const groups = sortGroupsPendingFirst(groupOrders(filtered).reverse());
   listEl.innerHTML = groups.map(function(g,i){
     const t = g.time.length>=16 ? g.time.substring(11,16) : '';
-    const allConfirmed = g.items.every(function(it){ return it.status==='已確認'; });
-    const badge = allConfirmed
-      ? '<span class="status-badge badge-confirmed">已確認</span>'
+    const st = groupStatus(g);
+    const badge = st==='待料' ? '<span class="status-badge badge-waiting">待料</span>'
+      : st==='已確認' ? '<span class="status-badge badge-confirmed">已確認</span>'
       : '<span class="status-badge badge-pending">待確認</span>';
     const idTag = g.orderId ? '<span style="font-size:.75rem;color:#718096;margin-left:6px">'+escHtml(g.orderId)+'</span>' : '';
     const totalQty = g.items.reduce(function(s,it){return s+it.quantity;},0);
     const rowIdxs = g.items.map(function(it){ return it.rowIndex; });
-    const confirmBtn = allConfirmed ? '' : '<button class="btn-action btn-confirm" onclick="doConfirmGroup(['+rowIdxs.join(',')+'])">✓ 確認整單</button>';
     const deleteBtn = '<button class="btn-action btn-delete" onclick="doDeleteGroup(['+rowIdxs.join(',')+'])">✕ 刪除整單</button>';
     const editBtn = '<button class="btn-action" style="background:#ebf8ff;color:#2b6cb0" onclick="showEditModal(\''+escHtml(g.orderId)+'\')">✏️ 修改</button>';
+    let mainBtns;
+    if (st==='待料') mainBtns = '<button class="btn-action btn-confirm" onclick="doArriveGroup(['+rowIdxs.join(',')+'])">📦 到貨</button>';
+    else if (st==='已確認') mainBtns = '';
+    else mainBtns = '<button class="btn-action btn-confirm" onclick="doConfirmGroup(['+rowIdxs.join(',')+'])">✓ 確認整單</button><button class="btn-action" style="background:#feebc8;color:#c05621" onclick="doPendingGroup(['+rowIdxs.join(',')+'])">🕓 待料</button>';
     return '<div class="order-item">' +
       '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +
       g.items.map(itemLine).join('') +
       '<div class="order-qty" style="margin-top:8px">本單共 <strong>'+totalQty+' 片</strong></div>' +
-      '<div class="order-actions">'+confirmBtn+deleteBtn+editBtn+'</div>' +
+      '<div class="order-actions">'+mainBtns+deleteBtn+editBtn+'</div>' +
     '</div>';
   }).join('');
+}
+
+// 分組狀態:任一列待料→待料;全部已確認→已確認;否則待確認
+function groupStatus(g) {
+  if (g.items.some(function(it){ return it.status==='待料'; })) return '待料';
+  if (g.items.every(function(it){ return it.status==='已確認'; })) return '已確認';
+  return '待確認';
+}
+
+// 切換「待料清單(跨日期)」與「日期檢視」
+function togglePendingView() {
+  adminPendingView = !adminPendingView;
+  const btn = document.getElementById('admin-pending-btn');
+  if (btn) btn.textContent = adminPendingView ? '← 返回日期檢視' : '🕓 待料清單';
+  renderAdminOrders();
+}
+
+// 待料清單:不分日期,列出所有待料的單,每張可按「到貨」
+function renderPendingOrders() {
+  const pending = (allAdminOrders||[]).filter(function(o){ return String(o.status)==='待料'; });
+  const listEl = document.getElementById('admin-orders-list');
+  const summaryEl = document.getElementById('admin-summary-card');
+  const noDataEl = document.getElementById('admin-no-orders');
+  document.getElementById('admin-summary-date').textContent = '待料清單（跨日期）';
+  if (!pending.length) {
+    summaryEl.style.display='none';
+    noDataEl.style.display='block'; noDataEl.textContent='目前沒有待料的訂單';
+    listEl.innerHTML=''; return;
+  }
+  noDataEl.style.display='none'; summaryEl.style.display='flex';
+  document.getElementById('admin-summary-total').textContent = pending.reduce(function(s,o){return s+o.quantity;},0);
+  const groups = groupOrders(pending).reverse();
+  listEl.innerHTML = groups.map(function(g,i){
+    const t = (g.time||'').substring(0,16);
+    const idTag = g.orderId ? '<span style="font-size:.75rem;color:#718096;margin-left:6px">'+escHtml(g.orderId)+'</span>' : '';
+    const totalQty = g.items.reduce(function(s,it){return s+it.quantity;},0);
+    const rowIdxs = g.items.map(function(it){ return it.rowIndex; });
+    const arriveBtn = '<button class="btn-action btn-confirm" onclick="doArriveGroup(['+rowIdxs.join(',')+'])">📦 到貨</button>';
+    const deleteBtn = '<button class="btn-action btn-delete" onclick="doDeleteGroup(['+rowIdxs.join(',')+'])">✕ 刪除整單</button>';
+    const editBtn = '<button class="btn-action" style="background:#ebf8ff;color:#2b6cb0" onclick="showEditModal(\''+escHtml(g.orderId)+'\')">✏️ 修改</button>';
+    return '<div class="order-item">' +
+      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+escHtml(t)+'　<span class="status-badge badge-waiting">待料</span></span></div>' +
+      g.items.map(itemLine).join('') +
+      '<div class="order-qty" style="margin-top:8px">本單共 <strong>'+totalQty+' 片</strong></div>' +
+      '<div class="order-actions">'+arriveBtn+deleteBtn+editBtn+'</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function doPendingGroup(rowIndexes) {
+  const ok = await showConfirm('把這張訂單標成「待料」？（先不排進生產，等按到貨才排入）');
+  if (!ok) return;
+  loading(true);
+  try {
+    const res = await gasApi('setPending', { ...authData(), rows: rowIndexes });
+    loading(false);
+    if (res.success) { allAdminOrders = null; loadAllOrders(); }
+    else showAlert('操作失敗');
+  } catch(e) { loading(false); showAlert('連線失敗'); }
+}
+
+async function doArriveGroup(rowIndexes) {
+  const ok = await showConfirm('確認「到貨」？這張會排進今天的生產。');
+  if (!ok) return;
+  loading(true);
+  try {
+    const res = await gasApi('markArrived', { ...authData(), rows: rowIndexes });
+    loading(false);
+    if (res.success) { allAdminOrders = null; loadAllOrders(); }
+    else showAlert('操作失敗');
+  } catch(e) { loading(false); showAlert('連線失敗'); }
 }
 
 function showEditModal(orderId) {

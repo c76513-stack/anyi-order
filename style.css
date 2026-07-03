@@ -151,6 +151,7 @@ body {
 .status-badge { border-radius: 5px; padding: 2px 8px; font-size: .75rem; font-weight: 700; }
 .badge-pending { background: #fefcbf; color: #744210; }
 .badge-confirmed { background: #c6f6d5; color: #276749; }
+.badge-waiting { background: #feebc8; color: #c05621; }
 
 .order-actions { display: flex; gap: 8px; margin-top: 10px; }
 .btn-action { padding: 5px 12px; border-radius: 6px; font-size: .8rem; font-weight: 700; cursor: pointer; border: none; }

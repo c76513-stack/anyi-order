@@ -76,7 +76,7 @@
 <div id="form-section" style="display:none">
   <div class="top-bar">
     <span class="customer-name">安奕木業　👤 <span id="name-display"></span></span>
-    <span style="display:flex;align-items:center;gap:10px"><span style="font-size:.7rem;color:rgba(255,255,255,.55)">v48</span><button class="btn-logout" onclick="logout()">登出</button></span>
+    <span style="display:flex;align-items:center;gap:10px"><span style="font-size:.7rem;color:rgba(255,255,255,.55)">v49</span><button class="btn-logout" onclick="logout()">登出</button></span>
   </div>
   <div class="tabs">
     <button class="tab tab-active" id="tab-order" onclick="showTab('order')">📝 新增訂單</button>
@@ -149,6 +149,7 @@
         <label class="date-label">訂單編號</label>
         <input type="text" id="admin-orderid" placeholder="輸入編號可跨日期搜尋（留空則看當日）" oninput="renderAdminOrders()" style="flex:1;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.95rem;color:#2d3748;text-transform:uppercase">
       </div>
+      <button id="admin-pending-btn" onclick="togglePendingView()" style="width:100%;margin-bottom:14px;padding:10px;border:1.5px solid #dd6b20;border-radius:8px;background:#fffaf0;color:#c05621;font-size:.9rem;font-weight:700;cursor:pointer">🕓 待料清單</button>
       <div class="summary-card" id="admin-summary-card" style="display:none">
         <div class="summary-date" id="admin-summary-date"></div>
         <div class="summary-total">共 <span id="admin-summary-total">0</span> 片</div>
