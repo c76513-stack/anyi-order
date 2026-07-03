@@ -126,7 +126,7 @@ body {
 .size-field label { font-size: .72rem; font-weight: 700; color: #718096; }
 .size-field input { padding: 7px 8px; border: 1.5px solid #e2e8f0; border-radius: 7px; font-size: .88rem; color: #2d3748; background: #fff; width: 100%; -webkit-appearance: none; }
 .size-field input:focus { outline: none; border-color: #4299e1; }
-.size-slant { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: .72rem; font-weight: 700; color: #718096; padding-bottom: 6px; cursor: pointer; }
+.size-slant { display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: .8rem; font-weight: 700; color: #718096; cursor: pointer; }
 .size-slant input[type="checkbox"] { width: 16px; height: 16px; accent-color: #3182ce; cursor: pointer; }
 
 .hole-panel { margin-top: 10px; padding: 12px; border: 1.5px dashed #bee3f8; border-radius: 8px; background: #f0f7ff; display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
