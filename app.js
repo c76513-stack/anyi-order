@@ -14,25 +14,29 @@ async function gasApi(action, data) {
   // 用 POST 送，資料放 body（text/plain → 不觸發 CORS 預檢），避開 GET 網址長度限制
   const body = JSON.stringify(Object.assign({ action }, data || {}));
   const safe = !!RETRY_SAFE[action];
-  const maxTries = safe ? 3 : 1;
+  const maxTries = safe ? 2 : 1;                 // 讀取類失敗才重試一次；寫入類絕不重試（避免重複送出）
+  const perTryTimeout = safe ? 12000 : 20000;    // 每次最多等這麼久；寫入類也給上限，避免卡死轉不停
   let lastErr;
   for (let i = 0; i < maxTries; i++) {
-    let ctrl, to;
-    const opts = { method: 'POST', body: body, redirect: 'follow' };
-    if (safe) { ctrl = new AbortController(); opts.signal = ctrl.signal; to = setTimeout(function(){ ctrl.abort(); }, 25000); }
+    const ctrl = new AbortController();
+    const to = setTimeout(function(){ ctrl.abort(); }, perTryTimeout);
     try {
-      const resp = await fetch(GAS_URL, opts);
-      if (to) clearTimeout(to);
+      const resp = await fetch(GAS_URL, { method: 'POST', body: body, redirect: 'follow', signal: ctrl.signal });
+      clearTimeout(to);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       return await resp.json();
     } catch (e) {
-      if (to) clearTimeout(to);
+      clearTimeout(to);
       lastErr = e;
-      if (i < maxTries - 1) await new Promise(function(r){ setTimeout(r, 700 * (i + 1)); });
+      if (i < maxTries - 1) await new Promise(function(r){ setTimeout(r, 600); });
     }
   }
   throw lastErr;
 }
+
+// 小快取：把不常變的參考資料存進 localStorage，登入時先秒開、背景再更新
+function cacheGet(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }
+function cacheSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
 function authData() {
   return { u: currentUser, p: currentPass };
@@ -319,12 +323,16 @@ function startNewOrderWatch() {
     if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
   } catch (e) {}
   // 第一次先把現有訂單全記成「已看過」，不對舊單亂叫；_seenOrderIds 還沒好之前不比對
+  // 延後 5 秒再做這次較重的讀取，避開登入當下的尖峰
   _seenOrderIds = null;
-  gasApi('getAllOrders', authData()).then(function (orders) {
-    _seenOrderIds = {};
-    (orders || []).forEach(function (o) { if (o.orderId) _seenOrderIds[o.orderId] = 1; });
-  }).catch(function () { _seenOrderIds = {}; });
-  _notifyTimer = setInterval(_checkNewOrders, 30 * 1000);
+  setTimeout(function () {
+    if (currentRole !== 'admin') return;
+    gasApi('getAllOrders', authData()).then(function (orders) {
+      _seenOrderIds = {};
+      (orders || []).forEach(function (o) { if (o.orderId) _seenOrderIds[o.orderId] = 1; });
+    }).catch(function () { _seenOrderIds = {}; });
+  }, 5000);
+  _notifyTimer = setInterval(_checkNewOrders, 90 * 1000);
 }
 
 function stopNewOrderWatch() {
@@ -1751,8 +1759,14 @@ function escHtml(s) {
 // ══════════════════════════════════════════════
 //  UI 工具
 // ══════════════════════════════════════════════
+let _loadingGuard = null;
 function loading(on) {
   document.getElementById('loading').style.display = on ? 'flex' : 'none';
+  if (_loadingGuard) { clearTimeout(_loadingGuard); _loadingGuard = null; }
+  // 保險：萬一哪裡忘了關，轉圈最多 30 秒就自動收掉，不會卡死畫面
+  if (on) _loadingGuard = setTimeout(function () {
+    document.getElementById('loading').style.display = 'none';
+  }, 30000);
 }
 
 function showAlert(msg) {
@@ -1801,14 +1815,20 @@ function mmAutocompleteOrder(list) {
   });
 }
 async function loadModelMap() {
-  try {
-    const res = await gasApi('getModelMap', authData());
-    window.modelMap = Array.isArray(res) ? res : [];
+  function apply(list) {
+    window.modelMap = Array.isArray(list) ? list : [];
     const dl = document.getElementById('model-codes-list');
     if (dl) dl.innerHTML = mmAutocompleteOrder(window.modelMap).map(function(m){
       return '<option value="'+escHtml(m.code)+'"></option>';
     }).join('');
     renderModelMap();
+  }
+  const cached = cacheGet('anyi_modelMap');
+  if (cached) apply(cached);                 // 先用快取瞬間顯示
+  try {
+    const res = await gasApi('getModelMap', authData());
+    cacheSet('anyi_modelMap', res);
+    apply(res);                              // 再用最新資料覆蓋
   } catch(e) {}
 }
 async function mmLoadAccounts() {
@@ -2324,13 +2344,19 @@ async function doSaveModelMap() {
 // ══ 顏色清單 ══
 window.colorList = [];
 async function loadColorList() {
-  try {
-    const res = await gasApi('getColorList', authData());
-    window.colorList = Array.isArray(res) ? res : [];
+  function apply(list) {
+    window.colorList = Array.isArray(list) ? list : [];
     const dl = document.getElementById('color-list');
     if (dl) dl.innerHTML = window.colorList.map(function(c){ return '<option value="'+escHtml(c)+'">'; }).join('');
     renderColorList();
     if (typeof renderTypeColors === 'function') renderTypeColors();  // 顏色清單變動 → 勾選框同步
+  }
+  const cached = cacheGet('anyi_colorList');
+  if (cached) apply(cached);                 // 先用快取瞬間顯示
+  try {
+    const res = await gasApi('getColorList', authData());
+    cacheSet('anyi_colorList', res);
+    apply(res);                              // 再用最新資料覆蓋
   } catch(e) {}
 }
 function renderColorList() {
@@ -2387,10 +2413,13 @@ async function doSaveColorList() {
 window.typeColorMap = [];
 window.tcEditIndex = -1;
 async function loadTypeColors() {
+  const cached = cacheGet('anyi_typeColors');
+  if (cached) { window.typeColorMap = cached; renderTypeColors(); }   // 先用快取瞬間顯示
   try {
     const res = await gasApi('getTypeColors', authData());
     window.typeColorMap = Array.isArray(res) ? res : [];
-    renderTypeColors();
+    cacheSet('anyi_typeColors', window.typeColorMap);
+    renderTypeColors();                      // 再用最新資料覆蓋
   } catch(e) {}
 }
 function tcColorChecks(selected) {
