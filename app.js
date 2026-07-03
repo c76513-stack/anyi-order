@@ -344,16 +344,19 @@ function _checkNewOrders() {
   if (currentRole !== 'admin' || _seenOrderIds === null) return;
   gasApi('getAllOrders', authData()).then(function (orders) {
     if (!orders) return;
-    // 把沒看過的 orderId 收集起來，同一張單（同 orderId）合計片數
+    // 沒看過的 orderId：全部記成已看過；只有「待確認」的才通知（同 orderId 合計片數）
     var fresh = {};
+    var newIds = [];
     orders.forEach(function (o) {
       var id = o.orderId; if (!id || _seenOrderIds[id]) return;
+      newIds.push(id);
+      if (o.status !== '待確認') return;
       if (!fresh[id]) fresh[id] = { name: o.customerName || '', qty: 0 };
       fresh[id].qty += (Number(o.quantity) || 0);
     });
+    newIds.forEach(function (id) { _seenOrderIds[id] = 1; });
     var ids = Object.keys(fresh);
     if (!ids.length) return;
-    ids.forEach(function (id) { _seenOrderIds[id] = 1; });
     playScream();
     if (ids.length === 1) {
       var f = fresh[ids[0]];
