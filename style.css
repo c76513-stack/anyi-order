@@ -116,12 +116,12 @@ body {
 .size-main { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
 .size-seq { font-size: .8rem; font-weight: 800; color: #a0aec0; min-width: 14px; padding-bottom: 10px; }
 .size-field { display: flex; flex-direction: column; gap: 3px; flex: 0 0 90px; }
-.size-field.dim-field { flex: 0 0 110px; }
+.size-field.dim-field { flex: 1 1 110px; }
 .dim-wrap { position: relative; }
 .dim-wrap input { width: 100%; padding-right: 44px; }
 .dim-u-btn { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 36px; font-size: .7rem; font-weight: 700; color: #2b6cb0; text-align: center; background: #ebf8ff; border-radius: 4px; padding: 2px 1px; cursor: pointer; user-select: none; }
 .dim-u-btn:hover { background: #bee3f8; }
-.size-field.size-field-sm { flex: 0 0 60px; }
+.size-field.size-field-sm { flex: 1 1 60px; }
 .size-field.size-field-grow { flex: 1; min-width: 80px; }
 .size-field label { font-size: .72rem; font-weight: 700; color: #718096; }
 .size-field input { padding: 7px 8px; border: 1.5px solid #e2e8f0; border-radius: 7px; font-size: .88rem; color: #2d3748; background: #fff; width: 100%; -webkit-appearance: none; }

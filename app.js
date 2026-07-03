@@ -503,12 +503,11 @@ function addSizeRow(gid) {
         '<div class="dim-wrap"><input type="number" id="s'+sid+'-height" placeholder="數值" oninput="updateDimUnit(this,\'s'+sid+'-height-u\',300);autoCalcHole('+sid+');updateHolePreview('+sid+')">' +
         '<span id="s'+sid+'-height-u" class="dim-u-btn" data-unit="" data-sid="'+sid+'" onclick="toggleDimUnit(this)">—</span></div></div>' +
       '<div class="size-field size-field-sm"><label>數量</label><input type="number" id="s'+sid+'-qty" value="1" min="1"></div>' +
-      '<label class="size-slant"><input type="checkbox" id="s'+sid+'-slant" onchange="toggleSizeSlant('+sid+')"> 斜邊</label>' +
-      '<label class="size-slant"><input type="checkbox" id="s'+sid+'-hole" onchange="toggleHole('+sid+')"> 挖洞</label>' +
       '<button class="btn-remove-size" onclick="removeSizeRow('+sid+')">✕</button>' +
     '</div>' +
-    '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin-top:8px;padding-left:2px">' +
-      '<span style="font-size:.78rem;font-weight:700;color:#718096">加工</span>' +
+    '<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:10px">' +
+      '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-slant" onchange="toggleSizeSlant('+sid+')"> 斜邊</label>' +
+      '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-hole" onchange="toggleHole('+sid+')"> 挖洞</label>' +
       '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-bridge"> 橋洞板</label>' +
       '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-reinforce"> 上下補強</label>' +
       '<label class="size-slant" style="margin-bottom:0"><input type="checkbox" id="s'+sid+'-strip"> 下降壓條</label>' +
