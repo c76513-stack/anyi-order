@@ -54,7 +54,6 @@ let modalResolve = null;
 let _appVersion = null, _versionTimer = null;
 let _updatePending = false, _lastActivity = Date.now();
 let _hbTimer = null, _accountsTimer = null;
-let _notifyTimer = null, _seenOrderIds = null, _audioCtx = null;
 
 // ══════════════════════════════════════════════
 //  初始化
@@ -287,7 +286,6 @@ async function login() {
     allOrders = null; allAdminOrders = null;
     startVersionPolling();
     startHeartbeat();
-    startNewOrderWatch();
     initGroups();
   } catch (e) {
     loading(false);
@@ -307,134 +305,6 @@ function startVersionPolling() {
       }
     }).catch(function(){});
   }, 2 * 60 * 1000);
-}
-
-// ══════════════════════════════════════════════
-//  新單通知（管理員）— 桌面通知 + 尖叫警報聲
-// ══════════════════════════════════════════════
-function startNewOrderWatch() {
-  if (currentRole !== 'admin') return;
-  stopNewOrderWatch();
-  // 趁登入手勢還在，要一次通知權限、並開好音訊環境（之後定時播才不會被瀏覽器擋）
-  try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
-  try {
-    var AC = window.AudioContext || window.webkitAudioContext;
-    if (AC && !_audioCtx) _audioCtx = new AC();
-    if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
-  } catch (e) {}
-  // 第一次先把現有訂單全記成「已看過」，不對舊單亂叫；_seenOrderIds 還沒好之前不比對
-  // 延後 5 秒再做這次較重的讀取，避開登入當下的尖峰
-  _seenOrderIds = null;
-  setTimeout(function () {
-    if (currentRole !== 'admin') return;
-    gasApi('getAllOrders', authData()).then(function (orders) {
-      _seenOrderIds = {};
-      (orders || []).forEach(function (o) { if (o.orderId) _seenOrderIds[o.orderId] = 1; });
-    }).catch(function () { _seenOrderIds = {}; });
-  }, 5000);
-  _notifyTimer = setInterval(_checkNewOrders, 90 * 1000);
-}
-
-function stopNewOrderWatch() {
-  if (_notifyTimer) { clearInterval(_notifyTimer); _notifyTimer = null; }
-  _seenOrderIds = null;
-}
-
-function _checkNewOrders() {
-  if (currentRole !== 'admin' || _seenOrderIds === null) return;
-  gasApi('getAllOrders', authData()).then(function (orders) {
-    if (!orders) return;
-    // 沒看過的 orderId：全部記成已看過；只有「待確認」的才通知（同 orderId 合計片數）
-    var fresh = {};
-    var newIds = [];
-    orders.forEach(function (o) {
-      var id = o.orderId; if (!id || _seenOrderIds[id]) return;
-      newIds.push(id);
-      if (o.status !== '待確認') return;
-      if (!fresh[id]) fresh[id] = { name: o.customerName || '', qty: 0 };
-      fresh[id].qty += (Number(o.quantity) || 0);
-    });
-    newIds.forEach(function (id) { _seenOrderIds[id] = 1; });
-    var ids = Object.keys(fresh);
-    if (!ids.length) return;
-    playScream();
-    if (ids.length === 1) {
-      var f = fresh[ids[0]];
-      showOrderNotification('🔔 新單：' + f.name + ' ' + f.qty + ' 片');
-    } else {
-      var total = ids.reduce(function (s, id) { return s + fresh[id].qty; }, 0);
-      showOrderNotification('🔔 有 ' + ids.length + ' 張新單，共 ' + total + ' 片');
-    }
-  }).catch(function () {});
-}
-
-function showOrderNotification(text) {
-  showInPageAlert(text);                 // 頁面內橫幅：不管作業系統權限/專注輔助，一定看得到
-  // 作業系統桌面通知（加分，有授權才會）
-  try {
-    if (!window.Notification) return;
-    if (Notification.permission === 'granted') {
-      try {
-        var n = new Notification('每日門扇', { body: text, tag: 'anyi-neworder', renotify: true });
-        n.onclick = function () { window.focus(); try { showTab('admin'); } catch (e) {} n.close(); };
-      } catch (e) {
-        // 已安裝的 PWA 不准用 new Notification → 改走 service worker
-        if (navigator.serviceWorker) {
-          navigator.serviceWorker.ready.then(function (reg) {
-            reg.showNotification('每日門扇', { body: text, tag: 'anyi-neworder', renotify: true });
-          }).catch(function () {});
-        }
-      }
-    } else if (Notification.permission === 'default') {
-      Notification.requestPermission();  // 還沒決定就再問一次
-    }
-  } catch (e) {}
-}
-
-// 頁面內紅色橫幅通知：程式動態產生，不受作業系統權限/專注輔助影響
-function showInPageAlert(text) {
-  var el = document.getElementById('neworder-toast');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'neworder-toast';
-    el.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100000;'
-      + 'background:#c0392b;color:#fff;padding:14px 22px;border-radius:10px;'
-      + 'box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:1rem;font-weight:700;'
-      + 'cursor:pointer;max-width:92%;text-align:center;line-height:1.5';
-    el.onclick = function () { el.style.display = 'none'; try { showTab('admin'); } catch (e) {} };
-    document.body.appendChild(el);
-  }
-  el.textContent = '🔔 ' + text + '（點此查看）';
-  el.style.display = 'block';
-  if (el._t) clearTimeout(el._t);
-  el._t = setTimeout(function () { el.style.display = 'none'; }, 15000);
-}
-
-// 用 Web Audio 合成一段刺耳的警報「尖叫」聲（不需音檔）
-function playScream() {
-  try {
-    var AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    if (!_audioCtx) _audioCtx = new AC();
-    if (_audioCtx.state === 'suspended') _audioCtx.resume();
-    var ctx = _audioCtx, t0 = ctx.currentTime;
-    for (var k = 0; k < 3; k++) {          // 三段快速上下掃頻，像尖叫/警笛
-      var s = t0 + k * 0.5;
-      var osc = ctx.createOscillator(), gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(700, s);
-      osc.frequency.exponentialRampToValueAtTime(1800, s + 0.18);
-      osc.frequency.exponentialRampToValueAtTime(600, s + 0.42);
-      var lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
-      lfo.frequency.value = 30; lfoGain.gain.value = 120;   // 快速抖動更像尖叫
-      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
-      gain.gain.setValueAtTime(0.0001, s);
-      gain.gain.exponentialRampToValueAtTime(0.6, s + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, s + 0.45);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(s); lfo.start(s); osc.stop(s + 0.46); lfo.stop(s + 0.46);
-    }
-  } catch (e) {}
 }
 
 // ── 閒置時自動套用更新 ───────────────────────────────
@@ -478,7 +348,6 @@ function logout() {
   if (_versionTimer) { clearInterval(_versionTimer); _versionTimer = null; }
   if (_hbTimer) { clearInterval(_hbTimer); _hbTimer = null; }
   if (_accountsTimer) { clearInterval(_accountsTimer); _accountsTimer = null; }
-  stopNewOrderWatch();
   _appVersion = null;
   document.getElementById('update-banner').style.display = 'none';
   document.getElementById('form-section').style.display = 'none';
