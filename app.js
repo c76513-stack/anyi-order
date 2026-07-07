@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -1301,7 +1301,7 @@ function renderAdminOrders() {
     const editBtn = '<button class="btn-action" style="background:#ebf8ff;color:#2b6cb0" onclick="showEditModal(\''+escHtml(g.orderId)+'\')">✏️ 修改</button>';
     let mainBtns;
     if (st==='待料') mainBtns = '<button class="btn-action btn-confirm" onclick="doArriveGroup(['+rowIdxs.join(',')+'])">📦 到貨</button>';
-    else if (st==='已確認') mainBtns = '';
+    else if (st==='已確認') mainBtns = '<button class="btn-action" style="background:#feebc8;color:#c05621" onclick="doPendingGroup(['+rowIdxs.join(',')+'])">🕓 改待料</button>';
     else mainBtns = '<button class="btn-action btn-confirm" onclick="doConfirmGroup(['+rowIdxs.join(',')+'])">✓ 確認整單</button><button class="btn-action" style="background:#feebc8;color:#c05621" onclick="doPendingGroup(['+rowIdxs.join(',')+'])">🕓 待料</button>';
     return '<div class="order-item">' +
       '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +

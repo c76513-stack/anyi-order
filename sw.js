@@ -1,6 +1,6 @@
 // ★★★ 部署時：把下面的版本號 +1（v55→v56…），並把 app.js 最上面的 APP_VERSION 改成同一個數字，存檔上傳即可 ★★★
 // 只要這個數字有變，所有裝置 3 分鐘內會自動抓最新版、自動重整，不用任何人手動清快取。
-const CACHE = 'anyi-v55';
+const CACHE = 'anyi-v56';
 
 self.addEventListener('install', e => { self.skipWaiting(); });
 
