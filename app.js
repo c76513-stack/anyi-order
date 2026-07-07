@@ -1,3 +1,7 @@
+// ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
+const APP_VERSION = 'v55';
+(function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
+
 // ══════════════════════════════════════════════
 //  GAS API 通訊
 // ══════════════════════════════════════════════
