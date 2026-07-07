@@ -851,13 +851,13 @@ function drawHolesSVG(doorWmm, doorHmm, computed, maxW, maxH) {
   maxW = maxW||120; maxH = maxH||200;
   if (!doorWmm||!doorHmm||!computed.length) return '';
   var scale = Math.min(maxW/doorWmm, maxH/doorHmm);
-  var dw = Math.round(doorWmm*scale), dh = Math.round(doorHmm*scale);
+  var dw = +(doorWmm*scale).toFixed(2), dh = +(doorHmm*scale).toFixed(2);
   var rects = '';
   for (var i = 0; i < computed.length; i++) {
     var c = computed[i];
     if (c.holeW_mm>0&&c.holeH_mm>0) {
-      rects += '<rect x="'+Math.round(c.distL_mm*scale)+'" y="'+Math.round(c.distT_mm*scale)+
-        '" width="'+Math.max(1,Math.round(c.holeW_mm*scale))+'" height="'+Math.max(1,Math.round(c.holeH_mm*scale))+
+      rects += '<rect x="'+(c.distL_mm*scale).toFixed(2)+'" y="'+(c.distT_mm*scale).toFixed(2)+
+        '" width="'+Math.max(1,c.holeW_mm*scale).toFixed(2)+'" height="'+Math.max(1,c.holeH_mm*scale).toFixed(2)+
         '" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>';
     }
   }
@@ -925,11 +925,11 @@ function updateHolePreview(sid) {
   const leftMm = lFilled ? Lmm : (rFilled ? (doorW - Rmm - holeW) : 0);
   const topMm  = tFilled ? Tmm : (bFilled ? (doorH - Bmm - holeH) : 0);
   const MAX=120; const scale=Math.min(MAX/doorW,MAX*1.5/doorH);
-  const dw=Math.round(doorW*scale),dh=Math.round(doorH*scale);
+  const dw=+(doorW*scale).toFixed(2),dh=+(doorH*scale).toFixed(2);
   let inner='';
   if(holeW>0&&holeH>0) {
-    const hw=Math.max(1,Math.round(holeW*scale)),hh=Math.max(1,Math.round(holeH*scale));
-    const hx=Math.round(leftMm*scale),hy=Math.round(topMm*scale);
+    const hw=+Math.max(1,holeW*scale).toFixed(2),hh=+Math.max(1,holeH*scale).toFixed(2);
+    const hx=+(leftMm*scale).toFixed(2),hy=+(topMm*scale).toFixed(2);
     inner=`<rect x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>`;
   }
   box.innerHTML=`<svg width="${dw}" height="${dh}" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff"><rect width="${dw}" height="${dh}" fill="#ebf8ff"/>${inner}</svg><div class="hole-note" style="margin-top:4px">${(doorW/10).toFixed(1)}×${(doorH/10).toFixed(1)}公分</div>`;
@@ -1625,9 +1625,9 @@ function holeRemarkSvg(remark, doorWmm, doorHmm) {
   const leftMm = hasL ? L : (hasR ? (doorW - R - W) : 0);
   const topMm  = hasT ? T : (hasB ? (doorH - B - H) : 0);
   const MAX=70, scale=Math.min(MAX/doorW,MAX*1.5/doorH);
-  const dw=Math.round(doorW*scale), dh=Math.round(doorH*scale);
-  const hw=Math.max(1,Math.round(W*scale)), hh=Math.max(1,Math.round(H*scale));
-  const hx=Math.round(leftMm*scale), hy=Math.round(topMm*scale);
+  const dw=+(doorW*scale).toFixed(2), dh=+(doorH*scale).toFixed(2);
+  const hw=+Math.max(1,W*scale).toFixed(2), hh=+Math.max(1,H*scale).toFixed(2);
+  const hx=+(leftMm*scale).toFixed(2), hy=+(topMm*scale).toFixed(2);
   return '<svg width="'+dw+'" height="'+dh+'" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff;display:block;margin-top:6px">'+
     '<rect width="'+dw+'" height="'+dh+'" fill="#ebf8ff"/>'+
     '<rect x="'+hx+'" y="'+hy+'" width="'+hw+'" height="'+hh+'" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>'+
