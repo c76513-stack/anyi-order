@@ -861,7 +861,7 @@ function drawHolesSVG(doorWmm, doorHmm, computed, maxW, maxH) {
         '" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>';
     }
   }
-  return '<svg width="'+dw+'" height="'+dh+'" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff">'+
+  return '<svg width="'+dw+'" height="'+dh+'" style="box-sizing:content-box;border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff">'+
     '<rect width="'+dw+'" height="'+dh+'" fill="#ebf8ff"/>'+rects+'</svg>'+
     '<div class="hole-note" style="margin-top:4px">'+(doorWmm/10).toFixed(1)+'×'+(doorHmm/10).toFixed(1)+'公分</div>';
 }
@@ -932,7 +932,7 @@ function updateHolePreview(sid) {
     const hx=+(leftMm*scale).toFixed(2),hy=+(topMm*scale).toFixed(2);
     inner=`<rect x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>`;
   }
-  box.innerHTML=`<svg width="${dw}" height="${dh}" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff"><rect width="${dw}" height="${dh}" fill="#ebf8ff"/>${inner}</svg><div class="hole-note" style="margin-top:4px">${(doorW/10).toFixed(1)}×${(doorH/10).toFixed(1)}公分</div>`;
+  box.innerHTML=`<svg width="${dw}" height="${dh}" style="box-sizing:content-box;border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff"><rect width="${dw}" height="${dh}" fill="#ebf8ff"/>${inner}</svg><div class="hole-note" style="margin-top:4px">${(doorW/10).toFixed(1)}×${(doorH/10).toFixed(1)}公分</div>`;
 }
 
 function updateCutoffNotice() {
@@ -1628,7 +1628,7 @@ function holeRemarkSvg(remark, doorWmm, doorHmm) {
   const dw=+(doorW*scale).toFixed(2), dh=+(doorH*scale).toFixed(2);
   const hw=+Math.max(1,W*scale).toFixed(2), hh=+Math.max(1,H*scale).toFixed(2);
   const hx=+(leftMm*scale).toFixed(2), hy=+(topMm*scale).toFixed(2);
-  return '<svg width="'+dw+'" height="'+dh+'" style="border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff;display:block;margin-top:6px">'+
+  return '<svg width="'+dw+'" height="'+dh+'" style="box-sizing:content-box;border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff;display:block;margin-top:6px">'+
     '<rect width="'+dw+'" height="'+dh+'" fill="#ebf8ff"/>'+
     '<rect x="'+hx+'" y="'+hy+'" width="'+hw+'" height="'+hh+'" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>'+
     '</svg>';
