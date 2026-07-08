@@ -1269,6 +1269,7 @@ function renderAdminOrders() {
   const prev = selectEl.value;
   const names = [];
   byDate.forEach(function(o){ if(names.indexOf(o.customerName)===-1) names.push(o.customerName); });
+  names.sort(custNameCmp);
   selectEl.innerHTML = '<option value="">所有客戶</option>' +
     names.map(function(n){ return '<option value="'+escHtml(n)+'"'+(n===prev?' selected':'')+'>'+escHtml(n)+'</option>'; }).join('');
   const chosen = selectEl.value;
@@ -1539,7 +1540,7 @@ async function loadProxyCustomers() {
     const list = await gasApi('getAllAccounts', authData());
     var names = [];
     (list||[]).forEach(function(a){ if (a.customerName && a.customerName !== currentCustomer && names.indexOf(a.customerName) === -1) names.push(a.customerName); });
-    names.sort(function(a,b){ return mmCodeCmp(a,b); });
+    names.sort(custNameCmp);
     var dl = document.getElementById('proxy-customer-list');
     if (!dl) return;
     dl.innerHTML = names.map(function(n){ return '<option value="'+escHtml(n)+'"></option>'; }).join('');
@@ -1707,6 +1708,10 @@ function showConfirm(msg) {
 // ══════════════════════════════════════════════
 function mmCodeCmp(a, b) {
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+// 客戶名筆畫排序（繁中 stroke collation；numeric 讓 7-9 排在 7-10 前）
+function custNameCmp(a, b) {
+  return String(a).localeCompare(String(b), 'zh-Hant-u-co-stroke', { numeric: true });
 }
 // 訂單頁自動完成排序：平永遠最前 → 自己廠商 → 通用 → 其他
 function mmAutocompleteOrder(list) {
