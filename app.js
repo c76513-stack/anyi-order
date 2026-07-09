@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v58';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -1145,7 +1145,7 @@ function downloadOrderImage(orderId) {
     return lines;
   }
   function sizeText(it) {
-    var hh = dimDisp(it.height,400);
+    var hh = dimDisp(it.height,300);
     if (it.bottomW) return dimDisp(it.topW,150)+'／'+dimDisp(it.bottomW,150)+'（斜）× '+hh;
     return dimDisp(it.topW,150)+' × '+hh;
   }
@@ -1498,6 +1498,23 @@ async function doDeleteGroup(rowIndexes) {
   } catch(e) { loading(false); showAlert('連線失敗'); }
 }
 
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+// base64 → 觸發瀏覽器下載（iOS Safari 會存進「檔案」App，不會直接開 Excel）
+function downloadBase64(b64, filename, mime) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+
 async function exportDailyReport() {
   const dateStr = document.getElementById('admin-date').value;
   if (!dateStr) { showAlert('請先選擇日期'); return; }
@@ -1506,7 +1523,8 @@ async function exportDailyReport() {
     const res = await gasApi('createDailyReport', { ...authData(), dateStr });
     loading(false);
     if (!res.success) { showAlert('匯出失敗：'+res.error); return; }
-    showAlert('已建立 '+res.rocDate+' 日報（共 '+res.count+' 筆）\n\n點確定後開啟 Google 試算表', function(){ window.open(res.url,'_blank'); });
+    downloadBase64(res.b64, res.filename, XLSX_MIME);
+    showAlert('已下載 '+res.filename+'（共 '+res.count+' 筆）');
   } catch(e) { loading(false); showAlert('連線失敗'); }
 }
 
@@ -1646,7 +1664,7 @@ function itemLine(it) {
   const noteText = normUnitsText((idx>=0 ? it.remark.substring(0,idx) : (it.remark||'')).trim());
   const holeText = idx>=0 ? normUnitsText(it.remark.substring(idx).trim()) : '';
   const doorWmm = Math.max(unitToMm(it.topW, dimUnit(it.topW,150)), it.bottomW ? unitToMm(it.bottomW, dimUnit(it.bottomW,150)) : 0);
-  const doorHmm = unitToMm(it.height, dimUnit(it.height,400));
+  const doorHmm = unitToMm(it.height, dimUnit(it.height,300));
   const holeSvg = holeRemarkSvg(it.remark||'', doorWmm, doorHmm);
   const modelDisp = (it.customerCode && it.customerCode !== it.modelType)
     ? it.customerCode + ' → ' + it.modelType : it.modelType;
@@ -1655,7 +1673,7 @@ function itemLine(it) {
   const dfSvg = dfCode ? '<div style="margin-top:6px">'+doorFaceSVG(dfCode, 72)+'</div>' : '';
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span>'+proxyTag+'</div>'+
-    '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,400)+'　× <strong>'+it.quantity+' 片</strong>'+
+    '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,300)+'　× <strong>'+it.quantity+' 片</strong>'+
       (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
     '</div>'+
     (holeText ? '<div class="order-remark" style="margin-top:2px;color:#2b6cb0;line-height:1.6">'+escHtml(holeText)+'</div>' : '')+
