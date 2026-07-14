@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -828,6 +828,24 @@ function doorFaceSVG(code, hPx){
   });
   return '<svg width="'+w+'" height="'+h+'" style="display:block;border:1.5px solid #2b6cb0;border-radius:4px;background:#f7fafc">'+body+'</svg>';
 }
+// 訂貨單 PNG 用：把洞畫在備註欄（跟卡片的 drawHolesSVG 同一組座標，門扇按比例縮）
+function holeCanvas(ctx, lay, left, top, maxW, maxH){
+  if (!lay || !(lay.doorW>0) || !(lay.doorH>0) || !lay.computed.length) return 0;
+  var s = Math.min(maxW/lay.doorW, maxH/lay.doorH);
+  var dw = lay.doorW*s, dh = lay.doorH*s;
+  ctx.save();
+  ctx.fillStyle='#ebf8ff'; ctx.fillRect(left, top, dw, dh);
+  ctx.strokeStyle='#2b6cb0'; ctx.lineWidth=1.5; ctx.strokeRect(left, top, dw, dh);
+  ctx.setLineDash([3,2]); ctx.strokeStyle='#e53e3e'; ctx.lineWidth=1.2;
+  lay.computed.forEach(function(c){
+    if (!(c.holeW_mm>0) || !(c.holeH_mm>0)) return;
+    var x = left + c.distL_mm*s, y = top + c.distT_mm*s;
+    var w = Math.max(1, c.holeW_mm*s), h = Math.max(1, c.holeH_mm*s);
+    ctx.fillStyle='#fff'; ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h);
+  });
+  ctx.restore();
+  return dh;
+}
 function doorFaceCanvas(ctx, code, cx, topY, hPx){
   var d = DOOR_FACES[code]; if (!d) return 0;
   var h = hPx, w = Math.round(h*0.42), x = Math.round(cx - w/2), y = topY;
@@ -996,8 +1014,7 @@ async function submitAllOrders() {
       const hole = document.getElementById('s'+sid+'-hole').checked;
       if (hole) {
         if (window.lockedHoles[sid]) {
-          const spec = holeSpecText(sid);
-          remark = remark ? remark+' '+spec : spec;
+          // 型式表綁的固定洞：不寫進備註（洞由型號決定，卡片/訂貨單一律回頭查型式表畫圖）
         } else {
           const hw = holeVal(sid,'W'), hh = holeVal(sid,'H');
           if (!(parseFloat(hw)>0)||!(parseFloat(hh)>0)) { showAlert('挖洞的洞寬與洞高須大於 0'); return; }
@@ -1149,15 +1166,23 @@ function downloadOrderImage(orderId) {
     if (it.bottomW) return dimDisp(it.topW,150)+'／'+dimDisp(it.bottomW,150)+'（斜）× '+hh;
     return dimDisp(it.topW,150)+' × '+hh;
   }
+  var HOLE_MAX_H = 76;   // 備註欄裡挖洞示意圖的高度上限
   var rows = items.map(function(it){
     var modelLines = wrap(it.modelType, colX[1]-colX[0]-2*pad, fBody);
     var sizeLines  = wrap(sizeText(it), colX[2]-colX[1]-2*pad, fBody);
     var colorLines = wrap(it.color, colX[4]-colX[3]-2*pad, fBody);
-    var remarkLines= wrap(normUnitsText(it.remark), colX[5]-colX[4]-2*pad, fSmall);
+    var remarkLines= wrap(normUnitsText(orderRemarkText(it)), colX[5]-colX[4]-2*pad, fSmall);
+    var dW = Math.max(unitToMm(it.topW, dimUnit(it.topW,150)), it.bottomW ? unitToMm(it.bottomW, dimUnit(it.bottomW,150)) : 0);
+    var dH = unitToMm(it.height, dimUnit(it.height,300));
+    var lay = orderHoleLayout(it, dW, dH);
+    if (lay && !lay.computed.length) lay = null;
     var maxL = Math.max(modelLines.length, sizeLines.length, colorLines.length, remarkLines.length, 1);
     var df = it ? orderDoorFace(it) : '';
-    var h = Math.max(baseRowH, maxL*lineH + 2*pad, df ? (modelLines.length*lineH + 60 + 3*pad) : 0);
-    return {it:it, df:df, modelLines:modelLines, sizeLines:sizeLines, colorLines:colorLines, remarkLines:remarkLines, h:h};
+    var h = Math.max(baseRowH, maxL*lineH + 2*pad,
+                     lay ? (remarkLines.length*lineH + HOLE_MAX_H + 3*pad) : 0,
+                     df ? (modelLines.length*lineH + 60 + 3*pad) : 0);
+    return {it:it, df:df, lay:lay, modelLines:modelLines, sizeLines:sizeLines,
+            colorLines:colorLines, remarkLines:remarkLines, h:h};
   });
   // 不足 9 列補空白列，表格才不會太空
   while (rows.length < 9) {
@@ -1224,7 +1249,14 @@ function downloadOrderImage(orderId) {
     block(r.sizeLines, cellMid(1), 'center', y, r.h, lineH, fBody, '#2d3748');
     block([r.it ? String(r.it.quantity==null?'':r.it.quantity) : ''], cellMid(2), 'center', y, r.h, lineH, fBody, '#2d3748');
     block(r.colorLines, cellMid(3), 'center', y, r.h, lineH, fBody, '#2d3748');
-    block(r.remarkLines, colX[4]+pad, 'left', y, r.h, lineH, fSmall, '#4a5568');
+    if (r.lay) {
+      // 有洞：備註靠上，示意圖畫在備註底下（固定挖洞型式只有圖、沒有尺寸文字）
+      block(r.remarkLines, colX[4]+pad, 'left', y + pad, r.remarkLines.length*lineH, lineH, fSmall, '#4a5568');
+      holeCanvas(ctx, r.lay, colX[4]+pad, y + pad + r.remarkLines.length*lineH + 4,
+                 colX[5]-colX[4]-2*pad, HOLE_MAX_H);
+    } else {
+      block(r.remarkLines, colX[4]+pad, 'left', y, r.h, lineH, fSmall, '#4a5568');
+    }
     y += r.h;
   });
 
@@ -1632,29 +1664,60 @@ function parseHoleMm(spec, key) {
   if (!m) return 0;
   return unitToMm(parseFloat(m[1]), m[2]);
 }
-function holeRemarkSvg(remark, doorWmm, doorHmm) {
-  if (!remark || remark.indexOf('【挖洞】') === -1) return '';
+// 備註裡的【挖洞】→ 洞的座標陣列（給 drawHolesSVG 用）
+// 兩種格式都吃：單洞「洞寬20公分 洞高21.5公分 距底4公分 距左5公分」、
+// 多洞「洞1 洞寬… 距高… 距左…　洞2 洞距… …」（舊單還有這種，切成一段一個洞）
+function holeRemarkLayout(remark, doorWmm, doorHmm) {
+  if (!remark || remark.indexOf('【挖洞】') === -1) return null;
   const spec = remark.substring(remark.indexOf('【挖洞】'));
-  const W = parseHoleMm(spec,'洞寬'), H = parseHoleMm(spec,'洞高');
-  if (W<=0||H<=0) return '';
-  const hasT = spec.indexOf('距高')!==-1, hasB = spec.indexOf('距底')!==-1;
-  const hasL = spec.indexOf('距左')!==-1, hasR = spec.indexOf('距右')!==-1;
-  const T = parseHoleMm(spec,'距高'), B = parseHoleMm(spec,'距底');
-  const L = parseHoleMm(spec,'距左'), R = parseHoleMm(spec,'距右');
-  // 門板實際大小（沒帶進來就用距離推算當後備）
-  const doorW = (doorWmm>0 ? doorWmm : ((L+W+R)||W));
-  const doorH = (doorHmm>0 ? doorHmm : ((B+H+T)||H));
-  // 定位：有距左用距左、否則用距右；有距高用距高、否則用距底
-  const leftMm = hasL ? L : (hasR ? (doorW - R - W) : 0);
-  const topMm  = hasT ? T : (hasB ? (doorH - B - H) : 0);
-  const MAX=70, scale=Math.min(MAX/doorW,MAX*1.5/doorH);
-  const dw=+(doorW*scale).toFixed(2), dh=+(doorH*scale).toFixed(2);
-  const hw=+Math.max(1,W*scale).toFixed(2), hh=+Math.max(1,H*scale).toFixed(2);
-  const hx=+(leftMm*scale).toFixed(2), hy=+(topMm*scale).toFixed(2);
-  return '<svg width="'+dw+'" height="'+dh+'" style="box-sizing:content-box;border:2px solid #2b6cb0;border-radius:3px;background:#ebf8ff;display:block;margin-top:6px">'+
-    '<rect width="'+dw+'" height="'+dh+'" fill="#ebf8ff"/>'+
-    '<rect x="'+hx+'" y="'+hy+'" width="'+hw+'" height="'+hh+'" fill="#fff" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="3,2"/>'+
-    '</svg>';
+  const segs = spec.split(/洞\d+\s/).filter(function(s){ return s.indexOf('洞寬') !== -1; });
+  const out = [];
+  let doorW = doorWmm, doorH = doorHmm;
+  segs.forEach(function(seg) {
+    const W = parseHoleMm(seg,'洞寬'), H = parseHoleMm(seg,'洞高');
+    if (W<=0||H<=0) return;
+    const hasT = seg.indexOf('距高')!==-1, hasB = seg.indexOf('距底')!==-1;
+    const hasL = seg.indexOf('距左')!==-1, hasR = seg.indexOf('距右')!==-1;
+    const T = parseHoleMm(seg,'距高'), B = parseHoleMm(seg,'距底');
+    const L = parseHoleMm(seg,'距左'), R = parseHoleMm(seg,'距右');
+    // 門板實際大小（沒帶進來就用距離推算當後備）
+    if (!(doorW>0)) doorW = (L+W+R)||W;
+    if (!(doorH>0)) doorH = (B+H+T)||H;
+    // 定位：有距左用距左、否則用距右；有距高用距高、否則用距底
+    out.push({
+      distL_mm: hasL ? L : (hasR ? (doorW - R - W) : 0),
+      distT_mm: hasT ? T : (hasB ? (doorH - B - H) : 0),
+      holeW_mm: W, holeH_mm: H
+    });
+  });
+  return out.length ? { doorW: doorW, doorH: doorH, computed: out } : null;
+}
+function holeRemarkSvg(remark, doorWmm, doorHmm) {
+  const lay = holeRemarkLayout(remark, doorWmm, doorHmm);
+  if (!lay) return '';
+  return '<div style="margin-top:6px">'+drawHolesSVG(lay.doorW, lay.doorH, lay.computed, 70, 105)+'</div>';
+}
+// 型式表綁在型號上的固定挖洞（曜豐 3197-3 那種）：洞不寫進備註，看型號即時算
+function orderFixedHoles(it) {
+  const e = (window.modelMap||[]).find(function(m){ return m.code === it.customerCode; });
+  return (e && e.hole && e.holes && e.holes.length) ? e.holes : null;
+}
+// 這筆訂單的洞：固定型式 → 查型式表即時算；否則 → 解備註裡的【挖洞】
+function orderHoleLayout(it, doorWmm, doorHmm) {
+  const fixed = orderFixedHoles(it);
+  if (fixed) return { doorW: doorWmm, doorH: doorHmm,
+                      computed: calcHolesLayout(fixed, doorWmm, doorHmm) };
+  return holeRemarkLayout(it.remark||'', doorWmm, doorHmm);
+}
+// 固定挖洞型式的舊單，備註裡還留著洞的規格 → 顯示時切掉，只給圖
+function orderRemarkText(it) {
+  const idx = it.remark ? it.remark.indexOf('【挖洞】') : -1;
+  return (idx>=0 && orderFixedHoles(it)) ? it.remark.substring(0,idx).trim() : (it.remark||'');
+}
+function orderHoleSvg(it, doorWmm, doorHmm) {
+  const lay = orderHoleLayout(it, doorWmm, doorHmm);
+  if (!lay || !lay.computed.length) return '';
+  return '<div style="margin-top:6px">'+drawHolesSVG(lay.doorW, lay.doorH, lay.computed, 70, 105)+'</div>';
 }
 function itemLine(it) {
   const wDisp = it.bottomW
@@ -1662,10 +1725,11 @@ function itemLine(it) {
     : dimDisp(it.topW,150);
   const idx = it.remark ? it.remark.indexOf('【挖洞】') : -1;
   const noteText = normUnitsText((idx>=0 ? it.remark.substring(0,idx) : (it.remark||'')).trim());
-  const holeText = idx>=0 ? normUnitsText(it.remark.substring(idx).trim()) : '';
+  // 固定挖洞型式：師傅看型號就知道怎麼挖，只給圖不列尺寸（舊單備註裡的規格也一併不顯示）
+  const holeText = (idx>=0 && !orderFixedHoles(it)) ? normUnitsText(it.remark.substring(idx).trim()) : '';
   const doorWmm = Math.max(unitToMm(it.topW, dimUnit(it.topW,150)), it.bottomW ? unitToMm(it.bottomW, dimUnit(it.bottomW,150)) : 0);
   const doorHmm = unitToMm(it.height, dimUnit(it.height,300));
-  const holeSvg = holeRemarkSvg(it.remark||'', doorWmm, doorHmm);
+  const holeSvg = orderHoleSvg(it, doorWmm, doorHmm);
   const modelDisp = (it.customerCode && it.customerCode !== it.modelType)
     ? it.customerCode + ' → ' + it.modelType : it.modelType;
   const proxyTag = it.placedBy ? '<span class="tag" style="background:#fefcbf;color:#744210">代下單</span>' : '';
