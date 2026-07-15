@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -1493,7 +1493,10 @@ async function doUpdateOrder() {
     const bottomW = bottomWEl ? bottomWEl.value.trim() : '';
     const remark = el.querySelector('.ei-remark').value.trim();
     if (!modelType || !color || !topW || !height || !qty) { valid = false; return; }
-    items.push({ rowIndex, modelType, color, topW, bottomW, height, quantity: qty, remark });
+    // 寬度可能被改動 → 角材寬（resultA9）跟著重算，公式與新單一致
+    const a9sub = remark.indexOf('橋洞板') !== -1 ? 22 : 23;
+    const resultA9 = computeA9(parseFloat(topW)||0, dimUnit(topW,150), parseFloat(bottomW)||0, bottomW?dimUnit(bottomW,150):'公分', a9sub) || 0;
+    items.push({ rowIndex, modelType, color, topW, bottomW, height, quantity: qty, remark, resultA9 });
   });
   if (!valid) { showAlert('有必填欄位未填'); return; }
   loading(true);
@@ -1738,6 +1741,7 @@ function itemLine(it) {
   return '<div class="suborder">'+
     '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span>'+proxyTag+'</div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,300)+'　× <strong>'+it.quantity+' 片</strong>'+
+      (currentRole==='admin' && parseFloat(it.resultA9)>0 ? '　<span class="tag" style="background:#e6fffa;color:#234e52">角材寬 '+escHtml(String(it.resultA9))+'</span>' : '')+
       (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
     '</div>'+
     (holeText ? '<div class="order-remark" style="margin-top:2px;color:#2b6cb0;line-height:1.6">'+escHtml(holeText)+'</div>' : '')+
