@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -1733,6 +1733,21 @@ var compareEdit  = null;   // 維護分頁編輯中的副本
 
 function _cmpNum(x) { var v = parseFloat(x); return isNaN(v) ? 0 : v; }
 
+// 顏色：拆成「全字/色碼/色名」token，任一對到就算同色(P1 = 胡桃 = P1-胡桃)
+function cmpColorTokens(s) {
+  s = String(s == null ? '' : s).replace(/－/g, '-').trim();
+  if (!s) return [];
+  var i = s.indexOf('-');
+  if (i < 0) return [s.toUpperCase()];
+  return [s.toUpperCase(), s.slice(0, i).trim().toUpperCase(), s.slice(i + 1).trim().toUpperCase()].filter(Boolean);
+}
+function cmpColorEq(a, b) {
+  var ta = cmpColorTokens(a), tb = cmpColorTokens(b);
+  if (!ta.length && !tb.length) return true;
+  for (var i = 0; i < ta.length; i++) if (tb.indexOf(ta[i]) !== -1) return true;
+  return false;
+}
+
 function orderMatchIndex(it) {
   if (!compareTable || !compareTable.length) return 0;
   var model = String(it.modelType == null ? '' : it.modelType).trim();
@@ -1746,7 +1761,7 @@ function orderMatchIndex(it) {
   for (var j = 0; j < compareTable.length; j++) {
     var r = compareTable[j];
     if (model !== String(r.model || '').trim()) continue;   // 型式 = AC 完全相等
-    if (color !== String(r.color || '').trim()) continue;   // 顏色 = AD 完全相等
+    if (!cmpColorEq(color, r.color)) continue;              // 顏色 = AD：色碼或色名對到即可
     var ae = _cmpNum(r.width);                               // 寬 = AE
     if (ae <= 0) continue;
     if (ae < 120) ae = ae * 3.3;
