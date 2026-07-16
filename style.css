@@ -102,6 +102,12 @@ body {
 .suborder:first-of-type { border-top: none; padding-top: 2px; }
 .suborder .order-detail { margin-bottom: 4px; }
 .suborder .order-spec { margin-bottom: 0; }
+/* 對到對照表某列時：秀寬/高/備註 ＋「拿這片門」 */
+.cmp-detail { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px; font-size: .78rem; color: #22543d; line-height: 1.5; }
+.cmp-detail .cmp-txt { background: #f0fff4; border: 1px solid #c6f6d5; border-radius: 6px; padding: 3px 9px; }
+.btn-claim { background: #c6f6d5; color: #22543d; border: none; border-radius: 6px; padding: 4px 11px; font-size: .75rem; font-weight: 700; cursor: pointer; }
+.btn-claim:hover { background: #9ae6b4; }
+.claimed-mark { color: #276749; font-weight: 700; }
 
 .no-data { text-align: center; padding: 40px 20px; color: #a0aec0; font-size: .95rem; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
 

@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -1122,7 +1122,7 @@ function renderOrders() {
     const editBtn = !allConfirmed ? '<button class="btn-action" style="background:#ebf8ff;color:#2b6cb0" onclick="showEditModal(\''+escHtml(g.orderId)+'\')">✏️ 修改</button>' : '';
     const dlBtn = g.orderId ? '<button class="btn-action" style="background:#e6fffa;color:#2c7a7b" onclick="downloadOrderImage(\''+escHtml(g.orderId)+'\')">📥 下載訂單</button>' : '';
     return '<div class="order-item">' +
-      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +
+      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+idTag+'</span><span class="order-time">'+t+'　'+(g.items.some(function(it){return it.placedBy;})?'<span class="status-badge" style="background:#fefcbf;color:#744210">代下單</span>　':'')+badge+'</span></div>' +
       g.items.map(itemLine).join('') +
       '<div class="order-qty" style="margin-top:8px">本單共 <strong>'+totalQty+' 片</strong></div>' +
       ((editBtn||dlBtn) ? '<div class="order-actions">'+editBtn+dlBtn+'</div>' : '') +
@@ -1342,7 +1342,7 @@ function renderAdminOrders() {
     else if (st==='已確認') mainBtns = '<button class="btn-action" style="background:#feebc8;color:#c05621" onclick="doPendingGroup(['+rowIdxs.join(',')+'])">🕓 改待料</button>';
     else mainBtns = '<button class="btn-action btn-confirm" onclick="doConfirmGroup(['+rowIdxs.join(',')+'])">✓ 確認整單</button><button class="btn-action" style="background:#feebc8;color:#c05621" onclick="doPendingGroup(['+rowIdxs.join(',')+'])">🕓 待料</button>';
     return '<div class="order-item">' +
-      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+t+'　'+badge+'</span></div>' +
+      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+t+'　'+(g.items.some(function(it){return it.placedBy;})?'<span class="status-badge" style="background:#fefcbf;color:#744210">代下單</span>　':'')+badge+'</span></div>' +
       g.items.map(itemLine).join('') +
       '<div class="order-qty" style="margin-top:8px">本單共 <strong>'+totalQty+' 片</strong></div>' +
       '<div class="order-actions">'+mainBtns+deleteBtn+editBtn+'</div>' +
@@ -1389,7 +1389,7 @@ function renderPendingOrders() {
     const deleteBtn = '<button class="btn-action btn-delete" onclick="doDeleteGroup(['+rowIdxs.join(',')+'])">✕ 刪除整單</button>';
     const editBtn = '<button class="btn-action" style="background:#ebf8ff;color:#2b6cb0" onclick="showEditModal(\''+escHtml(g.orderId)+'\')">✏️ 修改</button>';
     return '<div class="order-item">' +
-      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+escHtml(t)+'　<span class="status-badge badge-waiting">待料</span></span></div>' +
+      '<div class="order-item-header"><span class="order-seq">#'+(groups.length-i)+'　'+escHtml(g.customerName)+idTag+'</span><span class="order-time">'+escHtml(t)+'　'+(g.items.some(function(it){return it.placedBy;})?'<span class="status-badge" style="background:#fefcbf;color:#744210">代下單</span>　':'')+'<span class="status-badge badge-waiting">待料</span></span></div>' +
       g.items.map(itemLine).join('') +
       '<div class="order-qty" style="margin-top:8px">本單共 <strong>'+totalQty+' 片</strong></div>' +
       '<div class="order-actions">'+arriveBtn+deleteBtn+editBtn+'</div>' +
@@ -1869,6 +1869,32 @@ async function doSaveCompareTable() {
   } catch (e) { loading(false); showAlert('連線失敗'); }
 }
 
+// 取用門扇：刪掉對照表對到的那列 + 在這片門備註寫上取用標記
+async function doClaimDoor(orderRow, cmpRow) {
+  if (!compareTable || !compareTable[cmpRow-1]) { showAlert('對照表資料不在，請重新整理再試'); return; }
+  var row = compareTable[cmpRow-1];
+  var z = String(row.remark||'').replace(/[()]/g, '').trim();   // 去括號，避免破壞標記格式
+  var mark = '🔒已取用(寬'+String(row.width||'')+' 高'+String(row.height||'')+(z ? ' 備註'+z : '')+')';
+  var ok = await showConfirm('確定拿對照表 #'+cmpRow+' 這片門？會從對照表刪除，並在這片門備註寫上取用記錄。');
+  if (!ok) return;
+  var newRows = compareTable.filter(function(_, i){ return i !== cmpRow-1; })
+    .map(function(r){ return {model:r.model, color:r.color, width:r.width, height:r.height, remark:r.remark}; });
+  loading(true);
+  try {
+    var res = await gasApi('claimDoor', Object.assign(authData(), { orderRow: orderRow, mark: mark, rows: newRows }));
+    loading(false);
+    if (res && res.success) {
+      compareTable = newRows;
+      if (compareEdit) compareEdit = compareTable.map(function(r){ return {model:r.model, color:r.color, width:r.width, height:r.height, remark:r.remark}; });
+      var o = (allAdminOrders||[]).find(function(x){ return x.rowIndex === orderRow; });
+      if (o) o.remark = mark + (o.remark ? ' ' + o.remark : '');
+      cmpMarkAll();
+      renderAdminOrders();
+      showAlert('已取用，對照表已更新');
+    } else showAlert('取用失敗：'+((res && res.error) || ''));
+  } catch (e) { loading(false); showAlert('連線失敗'); }
+}
+
 function itemLine(it) {
   const wDisp = it.bottomW
     ? dimDisp(it.topW,150)+' / '+dimDisp(it.bottomW,150)+'（斜邊）'
@@ -1882,18 +1908,33 @@ function itemLine(it) {
   const holeSvg = orderHoleSvg(it, doorWmm, doorHmm);
   const modelDisp = (it.customerCode && it.customerCode !== it.modelType)
     ? it.customerCode + ' → ' + it.modelType : it.modelType;
-  const proxyTag = it.placedBy ? '<span class="tag" style="background:#fefcbf;color:#744210">代下單</span>' : '';
-  const cmpTag = it._cmpRow ? '<span class="tag" style="background:#c6f6d5;color:#22543d">✓ 對到 #'+it._cmpRow+'</span>' : '';
   const dfCode = orderDoorFace(it);
   const dfSvg = dfCode ? '<div style="margin-top:6px">'+doorFaceSVG(dfCode, 72)+'</div>' : '';
+  // 已取用（備註含標記）就不再出「對到」列與按鈕；否則對到對照表某列 → 秀寬/高/備註＋「拿這片門」
+  const claimed = /🔒已取用/.test(it.remark || '');
+  const cmpRow = (!claimed && it._cmpRow && compareTable && compareTable[it._cmpRow-1]) ? compareTable[it._cmpRow-1] : null;
+  const cmpLine = cmpRow
+    ? '<div class="cmp-detail"><span class="cmp-txt">對照表 #'+it._cmpRow+' → 寬 '+escHtml(String(cmpRow.width))+'　高 '+escHtml(String(cmpRow.height))+(cmpRow.remark ? '　備註：'+escHtml(String(cmpRow.remark)) : '')+'</span>'+
+        (currentRole==='admin' ? '<button class="btn-claim" onclick="doClaimDoor('+it.rowIndex+','+it._cmpRow+')">🔒 拿這片門</button>' : '')+
+      '</div>'
+    : '';
   return '<div class="suborder">'+
-    '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span>'+proxyTag+cmpTag+'</div>'+
+    '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span></div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,300)+'　× <strong>'+it.quantity+' 片</strong>'+
       (currentRole==='admin' && parseFloat(it.resultA9)>0 ? '　<span class="tag" style="background:#e6fffa;color:#234e52">角材寬 '+escHtml(String(it.resultA9))+'</span>' : '')+
-      (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+
+      (noteText ? '　<span class="order-remark">備註：'+highlightClaim(noteText)+'</span>' : '')+
     '</div>'+
+    cmpLine+
     (holeText ? '<div class="order-remark" style="margin-top:2px;color:#2b6cb0;line-height:1.6">'+escHtml(holeText)+'</div>' : '')+
     dfSvg+holeSvg+'</div>';
+}
+
+// 備註裡的「🔒已取用(…)」標記上色強調，其餘照舊
+function highlightClaim(text) {
+  var s = escHtml(text);
+  var mm = String(text).match(/🔒已取用\([^)]*\)/);
+  if (mm) { var e = escHtml(mm[0]); s = s.replace(e, '<span class="claimed-mark">'+e+'</span>'); }
+  return s;
 }
 
 function escHtml(s) {
