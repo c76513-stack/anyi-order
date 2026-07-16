@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -231,7 +231,7 @@ function showForgot() {
 }
 
 function showTab(name) {
-  ['order','query','admin','accounts','modelmap','settings'].forEach(function(t) {
+  ['order','query','admin','accounts','modelmap','compare','settings'].forEach(function(t) {
     document.getElementById(t + '-section').style.display = t === name ? 'block' : 'none';
     const tab = document.getElementById('tab-' + t);
     if (tab) tab.classList.toggle('tab-active', t === name);
@@ -241,6 +241,7 @@ function showTab(name) {
   if (name === 'admin' && !allAdminOrders) loadAllOrders();
   if (name === 'accounts') { loadAccounts(); _accountsTimer = setInterval(function(){ loadAccounts(true); }, 20000); }
   if (name === 'modelmap') renderModelMap();
+  if (name === 'compare') loadCompareTable(true);
 }
 
 // ══════════════════════════════════════════════
@@ -278,6 +279,7 @@ async function login() {
       document.getElementById('tab-admin').style.display = 'flex';
       document.getElementById('tab-accounts').style.display = 'flex';
       document.getElementById('tab-modelmap').style.display = 'flex';
+      document.getElementById('tab-compare').style.display = 'flex';
       document.getElementById('proxy-customer-wrap').style.display = 'block';
       loadProxyCustomers();
     }
@@ -358,6 +360,7 @@ function logout() {
   document.getElementById('tab-admin').style.display = 'none';
   document.getElementById('tab-accounts').style.display = 'none';
   document.getElementById('tab-modelmap').style.display = 'none';
+  document.getElementById('tab-compare').style.display = 'none';
   document.getElementById('proxy-customer-wrap').style.display = 'none';
   window.modelMap = []; window.colorList = []; window.lockedHoles = {}; window.mmFormHoles = []; window.mmEditIndex = -1; window.mmAccounts = [];
   showLoginSection();
@@ -1281,6 +1284,7 @@ function downloadOrderImage(orderId) {
 //  老闆後台
 // ══════════════════════════════════════════════
 async function loadAllOrders() {
+  if (compareTable === null) loadCompareTable(false);
   if (allAdminOrders !== null) { renderAdminOrders(); return; }
   loading(true);
   try {
@@ -1293,6 +1297,7 @@ async function loadAllOrders() {
 function refreshAdminOrders() { allAdminOrders = null; loadAllOrders(); }
 
 function renderAdminOrders() {
+  cmpMarkAll();
   if (adminPendingView) { renderPendingOrders(); return; }
   const dateVal = document.getElementById('admin-date').value;
   const selectEl = document.getElementById('admin-search');
@@ -1722,6 +1727,131 @@ function orderHoleSvg(it, doorWmm, doorHmm) {
   if (!lay || !lay.computed.length) return '';
   return '<div style="margin-top:6px">'+drawHolesSVG(lay.doorW, lay.doorH, lay.computed, 70, 105)+'</div>';
 }
+// ── 比對對照表（AC~AF）：邏輯照 Module2 的 VBA 原樣搬 ──────────
+var compareTable = null;   // 雲端載入的對照表
+var compareEdit  = null;   // 維護分頁編輯中的副本
+
+function _cmpNum(x) { var v = parseFloat(x); return isNaN(v) ? 0 : v; }
+
+function orderMatchIndex(it) {
+  if (!compareTable || !compareTable.length) return 0;
+  var model = String(it.modelType == null ? '' : it.modelType).trim();
+  var color = String(it.color == null ? '' : it.color).trim();
+  var w = _cmpNum(it.topW);            // 左邊上寬 = D
+  if (w < 120) w = w * 3.3;            // <120 視為尺
+  var h = _cmpNum(it.height);          // 左邊高 = F
+  if (h <= 0) return 0;
+  if (h < 300) h = h * 3.3;            // <300 視為尺
+  var bestRow = 0, minDiff = Infinity;
+  for (var j = 0; j < compareTable.length; j++) {
+    var r = compareTable[j];
+    if (model !== String(r.model || '').trim()) continue;   // 型式 = AC 完全相等
+    if (color !== String(r.color || '').trim()) continue;   // 顏色 = AD 完全相等
+    var ae = _cmpNum(r.width);                               // 寬 = AE
+    if (ae <= 0) continue;
+    if (ae < 120) ae = ae * 3.3;
+    if (!(w <= ae && (ae - w) <= 5)) continue;              // 寬 ≤ AE 且差 ≤ 5
+    var af = _cmpNum(r.height);                              // 高 = AF
+    if (af < 300) af = af * 3.3;
+    if (h <= af) {                                          // 高 ≤ AF，取最接近
+      var diff = af - h;
+      if (diff < minDiff) { minDiff = diff; bestRow = j + 1; }
+    }
+  }
+  return bestRow;
+}
+
+function cmpMarkAll() {
+  (allAdminOrders || []).forEach(function(o){ o._cmpRow = orderMatchIndex(o); });
+}
+
+async function loadCompareTable(forEdit) {
+  if (compareTable !== null) {
+    if (forEdit) {
+      compareEdit = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
+      renderCompareEditList();
+    }
+    return;
+  }
+  try {
+    const rows = await gasApi('getCompareTable', authData());
+    compareTable = rows || [];
+    if (forEdit) {
+      compareEdit = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
+      renderCompareEditList();
+    }
+    if (allAdminOrders) { cmpMarkAll(); renderAdminOrders(); }
+  } catch (e) { showAlert('對照表載入失敗'); }
+}
+
+function cmpInp(key, val, ph, style) {
+  return '<input class="cmp-'+key+'" placeholder="'+ph+'" value="'+escHtml(String(val||''))+
+    '" style="'+(style||'flex:2')+';min-width:0;padding:7px 8px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem">';
+}
+
+function renderCompareEditList() {
+  var el = document.getElementById('compare-list');
+  if (!compareEdit || !compareEdit.length) {
+    el.innerHTML = '<p style="font-size:.85rem;color:#a0aec0;padding:8px 0">還沒有對照表資料，按下方「＋ 新增一列」開始。</p>';
+    return;
+  }
+  el.innerHTML =
+    '<div style="display:flex;gap:6px;font-size:.75rem;color:#718096;font-weight:700;padding:0 2px 4px">'+
+      '<div style="flex:2">型式</div><div style="flex:2">顏色</div><div style="flex:1.3">寬</div><div style="flex:1.3">高</div><div style="width:32px"></div>'+
+    '</div>'+
+    compareEdit.map(function(r,i){
+      return '<div style="display:flex;gap:6px;margin-bottom:6px" data-cmp-row="'+i+'">'+
+        cmpInp('model', r.model, '型式')+
+        cmpInp('color', r.color, '顏色')+
+        cmpInp('width', r.width, '寬', 'flex:1.3')+
+        cmpInp('height', r.height, '高', 'flex:1.3')+
+        '<button onclick="cmpRemoveRow('+i+')" style="width:32px;border:1.5px solid #fed7d7;background:#fff5f5;color:#c53030;border-radius:8px;cursor:pointer;font-weight:700">✕</button>'+
+      '</div>';
+    }).join('');
+}
+
+function cmpSyncFromInputs() {
+  if (!compareEdit) return;
+  document.querySelectorAll('#compare-list [data-cmp-row]').forEach(function(rowEl){
+    var i = parseInt(rowEl.getAttribute('data-cmp-row'), 10);
+    if (isNaN(i) || !compareEdit[i]) return;
+    compareEdit[i].model  = rowEl.querySelector('.cmp-model').value.trim();
+    compareEdit[i].color  = rowEl.querySelector('.cmp-color').value.trim();
+    compareEdit[i].width  = rowEl.querySelector('.cmp-width').value.trim();
+    compareEdit[i].height = rowEl.querySelector('.cmp-height').value.trim();
+  });
+}
+
+function cmpAddRow() {
+  cmpSyncFromInputs();
+  if (!compareEdit) compareEdit = [];
+  compareEdit.push({model:'',color:'',width:'',height:''});
+  renderCompareEditList();
+}
+
+function cmpRemoveRow(i) {
+  cmpSyncFromInputs();
+  compareEdit.splice(i, 1);
+  renderCompareEditList();
+}
+
+async function doSaveCompareTable() {
+  cmpSyncFromInputs();
+  var rows = (compareEdit || []).filter(function(r){ return r.model || r.color || r.width || r.height; });
+  loading(true);
+  try {
+    const res = await gasApi('saveCompareTable', Object.assign(authData(), { rows: rows }));
+    loading(false);
+    if (res.success) {
+      compareTable = rows.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
+      compareEdit  = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
+      renderCompareEditList();
+      cmpMarkAll();   // 存檔即重算：下次切回「所有訂單」標記就是最新
+      showAlert('已儲存，訂單標記已更新');
+    } else showAlert('儲存失敗：'+(res.error||''));
+  } catch (e) { loading(false); showAlert('連線失敗'); }
+}
+
 function itemLine(it) {
   const wDisp = it.bottomW
     ? dimDisp(it.topW,150)+' / '+dimDisp(it.bottomW,150)+'（斜邊）'
@@ -1736,10 +1866,11 @@ function itemLine(it) {
   const modelDisp = (it.customerCode && it.customerCode !== it.modelType)
     ? it.customerCode + ' → ' + it.modelType : it.modelType;
   const proxyTag = it.placedBy ? '<span class="tag" style="background:#fefcbf;color:#744210">代下單</span>' : '';
+  const cmpTag = it._cmpRow ? '<span class="tag" style="background:#c6f6d5;color:#22543d">✓ 對到 #'+it._cmpRow+'</span>' : '';
   const dfCode = orderDoorFace(it);
   const dfSvg = dfCode ? '<div style="margin-top:6px">'+doorFaceSVG(dfCode, 72)+'</div>' : '';
   return '<div class="suborder">'+
-    '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span>'+proxyTag+'</div>'+
+    '<div class="order-detail"><span class="tag">'+escHtml(modelDisp)+'</span><span class="tag">'+escHtml(it.color)+'</span>'+proxyTag+cmpTag+'</div>'+
     '<div class="order-spec">寬 '+wDisp+'　高 '+dimDisp(it.height,300)+'　× <strong>'+it.quantity+' 片</strong>'+
       (currentRole==='admin' && parseFloat(it.resultA9)>0 ? '　<span class="tag" style="background:#e6fffa;color:#234e52">角材寬 '+escHtml(String(it.resultA9))+'</span>' : '')+
       (noteText ? '　<span class="order-remark">備註：'+escHtml(noteText)+'</span>' : '')+

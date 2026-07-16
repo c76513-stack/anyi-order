@@ -84,6 +84,7 @@
     <button class="tab" id="tab-admin" onclick="showTab('admin')" style="display:none">📊 所有訂單</button>
     <button class="tab" id="tab-accounts" onclick="showTab('accounts')" style="display:none">👥 帳號管理</button>
     <button class="tab" id="tab-modelmap" onclick="showTab('modelmap')" style="display:none">📋 型式對照</button>
+    <button class="tab" id="tab-compare" onclick="showTab('compare')" style="display:none">✓ 比對對照表</button>
     <button class="tab" id="tab-settings" onclick="showTab('settings')">⚙️ 設定</button>
   </div>
 
@@ -199,6 +200,21 @@
         </div>
         <p style="font-size:.82rem;color:#718096;margin-bottom:12px">指定某個系統型式只能選哪幾個顏色（例如 101 只有 P1、P2、P6、P7）。下單時型式對應到這裡的系統型式，顏色欄就會變成只能選這幾色的下拉。沒設定的型式維持自由輸入。</p>
         <div id="typecolor-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 比對對照表 -->
+  <div id="compare-section" style="display:none">
+    <div class="content">
+      <div class="group-card">
+        <div class="group-header">
+          <span class="group-num">比對對照表</span>
+          <button class="btn-action btn-confirm" style="padding:4px 12px;border-radius:6px" onclick="doSaveCompareTable()">💾 儲存</button>
+        </div>
+        <p style="font-size:.82rem;color:#718096;margin-bottom:12px">設定好對照表後按儲存。【所有訂單】裡每片門會拿型式／顏色／上寬／高度去這張表找最接近的一列，對到就標「✓ 對到」。規則：型式、顏色完全相同；上寬 ≤ 表寬且差 5 以內；高度 ≤ 表高、取最接近。<br>（&lt;120 的寬、&lt;300 的高視為「尺」自動 ×3.3 換公分）</p>
+        <div id="compare-list"></div>
+        <button class="btn-action" style="background:#ebf8ff;color:#2b6cb0;margin-top:10px" onclick="cmpAddRow()">＋ 新增一列</button>
       </div>
     </div>
   </div>
