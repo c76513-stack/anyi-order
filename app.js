@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v63';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -1768,7 +1768,7 @@ function cmpMarkAll() {
 async function loadCompareTable(forEdit) {
   if (compareTable !== null) {
     if (forEdit) {
-      compareEdit = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
+      compareEdit = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height,remark:r.remark}; });
       renderCompareEditList();
     }
     return;
@@ -1777,7 +1777,7 @@ async function loadCompareTable(forEdit) {
     const rows = await gasApi('getCompareTable', authData());
     compareTable = rows || [];
     if (forEdit) {
-      compareEdit = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
+      compareEdit = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height,remark:r.remark}; });
       renderCompareEditList();
     }
     if (allAdminOrders) { cmpMarkAll(); renderAdminOrders(); }
@@ -1797,14 +1797,15 @@ function renderCompareEditList() {
   }
   el.innerHTML =
     '<div style="display:flex;gap:6px;font-size:.75rem;color:#718096;font-weight:700;padding:0 2px 4px">'+
-      '<div style="flex:2">型式</div><div style="flex:2">顏色</div><div style="flex:1.3">寬</div><div style="flex:1.3">高</div><div style="width:32px"></div>'+
+      '<div style="flex:1.6">型式</div><div style="flex:1.6">顏色</div><div style="flex:1">寬</div><div style="flex:1">高</div><div style="flex:2.2">備註</div><div style="width:32px"></div>'+
     '</div>'+
     compareEdit.map(function(r,i){
       return '<div style="display:flex;gap:6px;margin-bottom:6px" data-cmp-row="'+i+'">'+
-        cmpInp('model', r.model, '型式')+
-        cmpInp('color', r.color, '顏色')+
-        cmpInp('width', r.width, '寬', 'flex:1.3')+
-        cmpInp('height', r.height, '高', 'flex:1.3')+
+        cmpInp('model', r.model, '型式', 'flex:1.6')+
+        cmpInp('color', r.color, '顏色', 'flex:1.6')+
+        cmpInp('width', r.width, '寬', 'flex:1')+
+        cmpInp('height', r.height, '高', 'flex:1')+
+        cmpInp('remark', r.remark, '備註（自己看）', 'flex:2.2')+
         '<button onclick="cmpRemoveRow('+i+')" style="width:32px;border:1.5px solid #fed7d7;background:#fff5f5;color:#c53030;border-radius:8px;cursor:pointer;font-weight:700">✕</button>'+
       '</div>';
     }).join('');
@@ -1819,13 +1820,14 @@ function cmpSyncFromInputs() {
     compareEdit[i].color  = rowEl.querySelector('.cmp-color').value.trim();
     compareEdit[i].width  = rowEl.querySelector('.cmp-width').value.trim();
     compareEdit[i].height = rowEl.querySelector('.cmp-height').value.trim();
+    compareEdit[i].remark = rowEl.querySelector('.cmp-remark').value.trim();
   });
 }
 
 function cmpAddRow() {
   cmpSyncFromInputs();
   if (!compareEdit) compareEdit = [];
-  compareEdit.push({model:'',color:'',width:'',height:''});
+  compareEdit.push({model:'',color:'',width:'',height:'',remark:''});
   renderCompareEditList();
 }
 
@@ -1837,14 +1839,14 @@ function cmpRemoveRow(i) {
 
 async function doSaveCompareTable() {
   cmpSyncFromInputs();
-  var rows = (compareEdit || []).filter(function(r){ return r.model || r.color || r.width || r.height; });
+  var rows = (compareEdit || []).filter(function(r){ return r.model || r.color || r.width || r.height || r.remark; });
   loading(true);
   try {
     const res = await gasApi('saveCompareTable', Object.assign(authData(), { rows: rows }));
     loading(false);
     if (res.success) {
-      compareTable = rows.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
-      compareEdit  = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height}; });
+      compareTable = rows.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height,remark:r.remark}; });
+      compareEdit  = compareTable.map(function(r){ return {model:r.model,color:r.color,width:r.width,height:r.height,remark:r.remark}; });
       renderCompareEditList();
       cmpMarkAll();   // 存檔即重算：下次切回「所有訂單」標記就是最新
       showAlert('已儲存，訂單標記已更新');
