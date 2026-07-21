@@ -1,5 +1,5 @@
 // ★★★ 版本號：部署時跟 sw.js 的 anyi-vNN 改成同一個數字（畫面右上會顯示，方便確認線上是第幾版）★★★
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 (function(){ var e = document.getElementById('app-version'); if (e) e.textContent = APP_VERSION; })();
 
 // ══════════════════════════════════════════════
@@ -666,7 +666,7 @@ function computeA9(t, tUnit, b, bUnit, sub) {
   const bFen = b > 0 ? (bUnit === '分' ? b : b * 3.3) : 0;
   let w = Math.max(tFen, bFen);
   if (w <= 0) return null;
-  w = w - (sub || 23);
+  w = w - (sub || 22);
   const i = Math.floor(w), d = w - i;
   return d < 0.3 ? i : d < 0.8 ? i + 0.5 : i + 1;
 }
@@ -1033,7 +1033,7 @@ async function submitAllOrders() {
       if (document.getElementById('s'+sid+'-bridge').checked && remark.indexOf('橋洞板') === -1) remark = remark ? remark + ' 橋洞板' : '橋洞板';
       if (document.getElementById('s'+sid+'-reinforce').checked && remark.indexOf('上下補強') === -1) remark = remark ? remark + ' 上下補強' : '上下補強';
       if (document.getElementById('s'+sid+'-strip').checked && remark.indexOf('下降壓條') === -1) remark = remark ? remark + ' 下降壓條' : '下降壓條';
-      const a9sub = remark.indexOf('橋洞板') !== -1 ? 22 : 23;
+      const a9sub = (remark.indexOf('橋洞板') !== -1 || remark.indexOf('100%') !== -1 || remark.indexOf('100％') !== -1) ? 21 : 22;
       const resultA9 = computeA9(parseFloat(topW)||0, topWUnit, parseFloat(bottomW)||0, botWUnit, a9sub) || 0;
       orders.push({ modelType: model, customerCode, color, topW, topWUnit, bottomW, botWUnit, height, heightUnit, quantity: qty, remark, resultA9, customerName: orderCustomer, placedBy: placedBy });
     }
@@ -1499,7 +1499,7 @@ async function doUpdateOrder() {
     const remark = el.querySelector('.ei-remark').value.trim();
     if (!modelType || !color || !topW || !height || !qty) { valid = false; return; }
     // 寬度可能被改動 → 角材寬（resultA9）跟著重算，公式與新單一致
-    const a9sub = remark.indexOf('橋洞板') !== -1 ? 22 : 23;
+    const a9sub = (remark.indexOf('橋洞板') !== -1 || remark.indexOf('100%') !== -1 || remark.indexOf('100％') !== -1) ? 21 : 22;
     const resultA9 = computeA9(parseFloat(topW)||0, dimUnit(topW,150), parseFloat(bottomW)||0, bottomW?dimUnit(bottomW,150):'公分', a9sub) || 0;
     items.push({ rowIndex, modelType, color, topW, bottomW, height, quantity: qty, remark, resultA9 });
   });
